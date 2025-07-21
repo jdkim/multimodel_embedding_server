@@ -1,4 +1,3 @@
-# biomedbert_server_multi.py
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModel
