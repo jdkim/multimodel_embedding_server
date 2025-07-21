@@ -29,14 +29,14 @@ A high-performance local embedding server that provides biomedical and multiling
 
 ```bash
 # Clone or download the server files
-git clone <repository-url>  # or download biomedbert_server_multi.py
+git clone <repository-url>  # or download multimodel_embedding_server.py
 cd multi-model-embedding-server
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Run the server
-uvicorn biomedbert_server_multi:app --host 0.0.0.0 --port 11435
+uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435
 ```
 
 ### Option 2: Using Poetry
@@ -49,7 +49,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 poetry install
 
 # Run the server
-poetry run uvicorn biomedbert_server_multi:app --host 0.0.0.0 --port 11435
+poetry run uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435
 ```
 
 ### Option 3: Manual Installation
@@ -57,7 +57,7 @@ poetry run uvicorn biomedbert_server_multi:app --host 0.0.0.0 --port 11435
 ```bash
 pip install fastapi uvicorn[standard] transformers torch sentence-transformers scikit-learn
 
-uvicorn biomedbert_server_multi:app --host 0.0.0.0 --port 11435
+uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435
 ```
 
 ## 📦 Dependencies
@@ -78,7 +78,7 @@ requests>=2.31.0
 ### 1. Start the Server
 
 ```bash
-uvicorn biomedbert_server_multi:app --host 0.0.0.0 --port 11435
+uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435
 ```
 
 The server will automatically download and load both models on first startup (this may take a few minutes).
@@ -289,13 +289,13 @@ for result in results:
 
 ```bash
 # Single worker (for GPU usage)
-uvicorn biomedbert_server_multi:app --host 0.0.0.0 --port 11435 --workers 1
+uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435 --workers 1
 
 # Multiple workers (CPU only)
-uvicorn biomedbert_server_multi:app --host 0.0.0.0 --port 11435 --workers 4
+uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435 --workers 4
 
 # With Gunicorn (production)
-gunicorn -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:11435 biomedbert_server_multi:app
+gunicorn -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:11435 multimodel_embedding_server:app
 ```
 
 ### Environment Variables
@@ -307,7 +307,7 @@ export TORCH_HOME=/path/to/models  # Cache directory for models
 
 ### Adding New Models
 
-To add a new model, edit the `MODEL_CONFIGS` dictionary in `biomedbert_server_multi.py`:
+To add a new model, edit the `MODEL_CONFIGS` dictionary in `multimodel_embedding_server.py`:
 
 ```python
 MODEL_CONFIGS = {
