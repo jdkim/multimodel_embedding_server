@@ -28,6 +28,11 @@ MODEL_CONFIGS = {
         "name": "intfloat/multilingual-e5-large", 
         "type": "sentence_transformers",
         "description": "Multilingual embedding model with strong performance"
+    },
+    "bluebert": {
+        "name": "bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12",
+        "type": "transformers", 
+        "description": "BERT pre-trained on PubMed abstracts and MIMIC-III clinical notes"
     }
 }
 
@@ -203,7 +208,8 @@ async def list_models():
             "full_name": config["name"],
             "type": config["type"],
             "description": config["description"],
-            "loaded": model_key in models
+            "loaded": model_key in models,
+            "embedding_dim": 768 if config["type"] == "transformers" else (1024 if "e5-large" in config["name"] else 768)
         }
         model_list.append(model_info)
     
