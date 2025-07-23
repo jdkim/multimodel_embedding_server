@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Model Embedding Server - Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f8fafc;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        nav {
+            background: white;
+            padding: 1rem 0;
+            border-bottom: 1px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .nav-container {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            color: #4a5568;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .nav-link:hover {
+            background: #edf2f7;
+            color: #2d3748;
+        }
+
+        main {
+            padding: 2rem 0;
+        }
+
+        section {
+            background: white;
+            margin-bottom: 2rem;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            color: #2d3748;
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        h3 {
+            color: #4a5568;
+            font-size: 1.3rem;
+            margin: 1.5rem 0 1rem 0;
+        }
+
+        h4 {
+            color: #718096;
+            font-size: 1.1rem;
+            margin: 1rem 0 0.5rem 0;
+        }
+
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .model-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            background: #f7fafc;
+        }
+
+        .model-card h4 {
+            color: #2d3748;
+            margin: 0 0 0.5rem 0;
+        }
+
+        .model-key {
+            background: #667eea;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .feature-item {
+            background: #e6fffa;
+            padding: 1rem;
+            border-radius: 6px;
+            border-left: 4px solid #38b2ac;
+        }
+
+        .code-block {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        .endpoint {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+
+        .endpoint-header {
+            background: #4a5568;
+            color: white;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+
+        .endpoint-body {
+            padding: 1.5rem;
+        }
+
+        .method-post { background: #38a169; }
+        .method-get { background: #3182ce; }
+
+        .json-example {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .metric-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .metric-cosine { background: #fed7e2; color: #97266d; }
+        .metric-euclidean { background: #feebc8; color: #9c4221; }
+        .metric-manhattan { background: #c6f6d5; color: #276749; }
+        .metric-chebyshev { background: #bee3f8; color: #2c5282; }
+
+        .example-section {
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+
+        .alert-info {
+            background: #ebf8ff;
+            border-left: 4px solid #3182ce;
+            color: #2c5282;
+        }
+
+        .alert-warning {
+            background: #fffbeb;
+            border-left: 4px solid #f6ad55;
+            color: #c05621;
+        }
+
+        .alert-success {
+            background: #f0fff4;
+            border-left: 4px solid #48bb78;
+            color: #276749;
+        }
+
+        .performance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .performance-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .performance-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4a5568;
+        }
+
+        .performance-label {
+            font-size: 0.9rem;
+            color: #718096;
+            margin-top: 0.25rem;
+        }
+
+        footer {
+            background: #2d3748;
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 3rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 10px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .model-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav-container {
+                gap: 1rem;
+            }
+            
+            section {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Multi-Model Embedding Server</h1>
+            <p class="subtitle">High-performance biomedical and multilingual text embeddings with similarity calculations</p>
+        </div>
+    </header>
+
+    <nav>
+        <div class="container">
+            <div class="nav-container">
+                <a href="#overview" class="nav-link">Overview</a>
+                <a href="#models" class="nav-link">Models</a>
+                <a href="#api" class="nav-link">API Reference</a>
+                <a href="#examples" class="nav-link">Examples</a>
+                <a href="#performance" class="nav-link">Performance</a>
+                <a href="#deployment" class="nav-link">Deployment</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section id="overview">
+            <h2>🚀 Overview</h2>
+            <p>A FastAPI-based embedding server that provides state-of-the-art biomedical and multilingual text embeddings with built-in similarity calculation capabilities. Perfect for medical literature analysis, clinical text processing, and multilingual applications.</p>
+            
+            <div class="feature-list">
+                <div class="feature-item">
+                    <strong>Multiple Specialized Models</strong><br>
+                    BiomedBERT, BlueBERT for biomedical text and Multilingual-E5-Large for general use
+                </div>
+                <div class="feature-item">
+                    <strong>Similarity Calculations</strong><br>
+                    Built-in cosine, euclidean, manhattan, and chebyshev distance metrics
+                </div>
+                <div class="feature-item">
+                    <strong>Ollama Compatible</strong><br>
+                    Drop-in replacement for Ollama embedding endpoints
+                </div>
+                <div class="feature-item">
+                    <strong>Batch Processing</strong><br>
+                    Efficient processing of multiple texts and similarity matrices
+                </div>
+                <div class="feature-item">
+                    <strong>Production Ready</strong><br>
+                    Async support, health monitoring, and systemd integration
+                </div>
+                <div class="feature-item">
+                    <strong>Interactive Docs</strong><br>
+                    Auto-generated API documentation at /docs endpoint
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>Quick Start:</strong> The server runs on port 11435 by default and provides both individual embedding generation and batch similarity calculations for efficient biomedical text analysis.
+            </div>
+        </section>
+
+        <section id="models">
+            <h2>📋 Supported Models</h2>
+            
+            <div class="model-grid">
+                <div class="model-card">
+                    <h4>BiomedBERT <span class="model-key">biomedbert</span></h4>
+                    <p><strong>Use Case:</strong> Biomedical research papers, scientific literature</p>
+                    <p><strong>Training:</strong> Microsoft's domain-specific BERT trained from scratch on PubMed abstracts</p>
+                    <p><strong>Dimensions:</strong> 768</p>
+                    <p><strong>Best For:</strong> General biomedical text, research papers, medical terminology</p>
+                </div>
+                
+                <div class="model-card">
+                    <h4>BlueBERT <span class="model-key">bluebert</span></h4>
+                    <p><strong>Use Case:</strong> Clinical notes, electronic health records</p>
+                    <p><strong>Training:</strong> Pre-trained on PubMed abstracts + MIMIC-III clinical notes</p>
+                    <p><strong>Dimensions:</strong> 768</p>
+                    <p><strong>Best For:</strong> Clinical documentation, EHR text, medical abbreviations</p>
+                </div>
+                
+                <div class="model-card">
+                    <h4>Multilingual E5-Large <span class="model-key">multilingual-e5-large</span></h4>
+                    <p><strong>Use Case:</strong> General text, multilingual content</p>
+                    <p><strong>Training:</strong> Large-scale multilingual training with strong performance</p>
+                    <p><strong>Dimensions:</strong> 1024</p>
+                    <p><strong>Best For:</strong> Non-medical text, multilingual applications, general embedding tasks</p>
+                </div>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>Model Selection Guide:</strong> Use BiomedBERT for research papers, BlueBERT for clinical notes, and Multilingual-E5-Large for general or non-English text.
+            </div>
+        </section>
+
+        <section id="api">
+            <h2>🔌 API Reference</h2>
+            
+            <h3>Core Endpoints</h3>
+
+            <div class="endpoint">
+                <div class="endpoint-header method-post">POST /api/embeddings</div>
+                <div class="endpoint-body">
+                    <p><strong>Description:</strong> Get a single embedding (Ollama-compatible)</p>
+                    
+                    <h4>Request Body:</h4>
+                    <div class="json-example">{
+  "prompt": "myocardial infarction",
+  "model": "biomedbert"
+}</div>
+                    
+                    <h4>Response:</h4>
+                    <div class="json-example">{
+  "embedding": [0.1234, -0.5678, 0.9012, ...],
+  "model": "biomedbert"
+}</div>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <div class="endpoint-header method-post">POST /api/embed</div>
+                <div class="endpoint-body">
+                    <p><strong>Description:</strong> Get embeddings for multiple texts (batch processing)</p>
+                    
+                    <h4>Request Body:</h4>
+                    <div class="json-example">{
+  "input": ["diabetes", "hypertension", "stroke"],
+  "model": "bluebert"
+}</div>
+                    
+                    <h4>Response:</h4>
+                    <div class="json-example">{
+  "embeddings": [
+    [0.1234, -0.5678, ...],
+    [0.9012, 0.3456, ...],
+    [-0.7890, 0.2345, ...]
+  ]
+}</div>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <div class="endpoint-header method-post">POST /api/similarity</div>
+                <div class="endpoint-body">
+                    <p><strong>Description:</strong> Calculate similarity between two texts</p>
+                    
+                    <h4>Request Body:</h4>
+                    <div class="json-example">{
+  "text1": "myocardial infarction",
+  "text2": "heart attack",
+  "model": "biomedbert",
+  "metric": "cosine"
+}</div>
+                    
+                    <h4>Response:</h4>
+                    <div class="json-example">{
+  "similarity": 0.8234,
+  "distance": 0.1766,
+  "metric": "cosine",
+  "model": "biomedbert",
+  "text1": "myocardial infarction",
+  "text2": "heart attack"
+}</div>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <div class="endpoint-header method-post">POST /api/similarity/batch</div>
+                <div class="endpoint-body">
+                    <p><strong>Description:</strong> Calculate similarity matrix for multiple texts</p>
+                    
+                    <h4>Request Body:</h4>
+                    <div class="json-example">{
+  "texts": ["diabetes", "hypertension", "heart attack"],
+  "model": "bluebert",
+  "metric": "cosine"
+}</div>
+                    
+                    <h4>Response:</h4>
+                    <div class="json-example">{
+  "similarity_matrix": [
+    [1.0, 0.65, 0.42],
+    [0.65, 1.0, 0.48],
+    [0.42, 0.48, 1.0]
+  ],
+  "distance_matrix": [
+    [0.0, 0.35, 0.58],
+    [0.35, 0.0, 0.52],
+    [0.58, 0.52, 0.0]
+  ],
+  "metric": "cosine",
+  "model": "bluebert",
+  "texts": ["diabetes", "hypertension", "heart attack"]
+}</div>
+                </div>
+            </div>
+
+            <h3>Management Endpoints</h3>
+
+            <div class="endpoint">
+                <div class="endpoint-header method-get">GET /api/models</div>
+                <div class="endpoint-body">
+                    <p><strong>Description:</strong> List available models and their status</p>
+                    <div class="json-example">{
+  "models": [
+    {
+      "name": "biomedbert",
+      "full_name": "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract",
+      "type": "transformers",
+      "description": "Biomedical domain-specific BERT trained from scratch",
+      "loaded": true,
+      "embedding_dim": 768
+    }
+  ]
+}</div>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <div class="endpoint-header method-get">GET /health</div>
+                <div class="endpoint-body">
+                    <p><strong>Description:</strong> Health check and system status</p>
+                    <div class="json-example">{
+  "status": "healthy",
+  "models": {
+    "biomedbert": true,
+    "bluebert": true,
+    "multilingual-e5-large": true
+  },
+  "total_models": 3,
+  "loaded_count": 3
+}</div>
+                </div>
+            </div>
+
+            <h3>Similarity Metrics</h3>
+            
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Description</th>
+                            <th>Best For</th>
+                            <th>Range</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="metric-badge metric-cosine">cosine</span></td>
+                            <td>Cosine similarity</td>
+                            <td>General text similarity, semantic relationships</td>
+                            <td>0-1 (1=identical)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="metric-badge metric-euclidean">euclidean</span></td>
+                            <td>Euclidean distance</td>
+                            <td>Geometric similarity in embedding space</td>
+                            <td>0-∞ (0=identical)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="metric-badge metric-manhattan">manhattan</span></td>
+                            <td>Manhattan/L1 distance</td>
+                            <td>Robust to outliers, urban distance</td>
+                            <td>0-∞ (0=identical)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="metric-badge metric-chebyshev">chebyshev</span></td>
+                            <td>Chebyshev/L∞ distance</td>
+                            <td>Maximum difference across dimensions</td>
+                            <td>0-∞ (0=identical)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="examples">
+            <h2>💡 Usage Examples</h2>
+            
+            <div class="example-section">
+                <h3>Basic Embedding Generation</h3>
+                <div class="code-block">curl -X POST "http://localhost:11435/api/embeddings" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "acute myocardial infarction", "model": "biomedbert"}'</div>
+            </div>
+
+            <div class="example-section">
+                <h3>Batch Processing</h3>
+                <div class="code-block">curl -X POST "http://localhost:11435/api/embed" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": [
+      "diabetes mellitus",
+      "hypertension", 
+      "myocardial infarction",
+      "stroke"
+    ],
+    "model": "bluebert"
+  }'</div>
+            </div>
+
+            <div class="example-section">
+                <h3>Similarity Calculation</h3>
+                <div class="code-block">curl -X POST "http://localhost:11435/api/similarity" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text1": "myocardial infarction",
+    "text2": "heart attack",
+    "model": "biomedbert",
+    "metric": "cosine"
+  }'</div>
+            </div>
+
+            <div class="example-section">
+                <h3>Python Client Example</h3>
+                <div class="code-block">import requests
+
+def get_similarity(text1, text2, model="biomedbert"):
+    response = requests.post(
+        "http://localhost:11435/api/similarity",
+        json={
+            "text1": text1,
+            "text2": text2,
+            "model": model,
+            "metric": "cosine"
+        }
+    )
+    return response.json()["similarity"]
+
+# Compare medical terms
+similarity = get_similarity(
+    "acute myocardial infarction", 
+    "heart attack"
+)
+print(f"Similarity: {similarity:.3f}")
+
+# Compare across models
+biomedbert_sim = get_similarity("diabetes", "hyperglycemia", "biomedbert")
+bluebert_sim = get_similarity("diabetes", "hyperglycemia", "bluebert")
+
+print(f"BiomedBERT: {biomedbert_sim:.3f}")
+print(f"BlueBERT: {bluebert_sim:.3f}")</div>
+            </div>
+
+            <div class="example-section">
+                <h3>Medical Literature Search</h3>
+                <div class="code-block">def search_medical_literature(query, documents, model="biomedbert"):
+    """Find most relevant medical documents"""
+    
+    # Add query to documents for batch similarity
+    docs_with_query = documents + [query]
+    
+    response = requests.post(
+        "http://localhost:11435/api/similarity/batch",
+        json={
+            "texts": docs_with_query,
+            "model": model,
+            "metric": "cosine"
+        }
+    )
+    
+    similarity_matrix = response.json()["similarity_matrix"]
+    query_similarities = similarity_matrix[-1][:-1]  # Last row, exclude self
+    
+    # Get top 3 results
+    top_indices = sorted(
+        range(len(query_similarities)), 
+        key=lambda i: query_similarities[i], 
+        reverse=True
+    )[:3]
+    
+    results = [
+        {
+            "document": documents[i],
+            "score": query_similarities[i]
+        }
+        for i in top_indices
+    ]
+    
+    return results
+
+# Example usage
+medical_docs = [
+    "Diabetes mellitus is characterized by hyperglycemia",
+    "Hypertension increases cardiovascular disease risk",
+    "Myocardial infarction results from coronary artery occlusion",
+    "Stroke occurs when blood supply to brain is interrupted"
+]
+
+results = search_medical_literature(
+    "What causes heart attacks?", 
+    medical_docs
+)
+
+for result in results:
+    print(f"Score: {result['score']:.3f}")
+    print(f"Document: {result['document']}\n")</div>
+            </div>
+        </section>
+
+        <section id="performance">
+            <h2>📊 Performance & Optimization</h2>
+            
+            <h3>Performance Benchmarks</h3>
+            <div class="performance-grid">
+                <div class="performance-card">
+                    <div class="performance-value">~50ms</div>
+                    <div class="performance-label">BiomedBERT<br>Single Embedding</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">~1.5s</div>
+                    <div class="performance-label">BiomedBERT<br>32 Text Batch</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">~80ms</div>
+                    <div class="performance-label">E5-Large<br>Single Embedding</div>
+                </div>
+                <div class="performance-card">
+                    <div class="performance-value">~2.5s</div>
+                    <div class="performance-label">E5-Large<br>32 Text Batch</div>
+                </div>
+            </div>
+
+            <h3>Batch Size Guidelines</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Hardware</th>
+                            <th>Recommended Batch Size</th>
+                            <th>Maximum Batch Size</th>
+                            <th>Memory Usage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>CPU Only</td>
+                            <td>16 texts</td>
+                            <td>32 texts</td>
+                            <td>~2GB RAM</td>
+                        </tr>
+                        <tr>
+                            <td>GPU (4-8GB)</td>
+                            <td>32 texts</td>
+                            <td>64 texts</td>
+                            <td>~4GB VRAM</td>
+                        </tr>
+                        <tr>
+                            <td>GPU (12GB+)</td>
+                            <td>64 texts</td>
+                            <td>128 texts</td>
+                            <td>~8GB VRAM</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="alert alert-warning">
+                <strong>Memory Management:</strong> Use single worker mode (-w 1) with GPU to prevent memory conflicts. Batch processing is significantly more efficient than individual requests.
+            </div>
+
+            <h3>Optimization Tips</h3>
+            <div class="feature-list">
+                <div class="feature-item">
+                    <strong>Use Batch Endpoints</strong><br>
+                    Process multiple texts with /api/embed and /api/similarity/batch for 5-10x better performance
+                </div>
+                <div class="feature-item">
+                    <strong>Choose Right Model</strong><br>
+                    BiomedBERT for research, BlueBERT for clinical notes, E5-Large for general text
+                </div>
+                <div class="feature-item">
+                    <strong>GPU Acceleration</strong><br>
+                    Use CUDA_VISIBLE_DEVICES=0 for 3-5x speed improvement on compatible hardware
+                </div>
+                <div class="feature-item">
+                    <strong>Chunked Processing</strong><br>
+                    For large datasets, process in chunks of 32-64 texts to avoid memory issues
+                </div>
+            </div>
+        </section>
+
+        <section id="deployment">
+            <h2>🚀 Deployment Guide</h2>
+            
+            <h3>System Requirements</h3>
+            <ul>
+                <li><strong>Python:</strong> 3.8+ (3.10+ recommended)</li>
+                <li><strong>Memory:</strong> 8GB+ RAM (16GB+ recommended)</li>
+                <li><strong>Storage:</strong> 10GB+ free space for models</li>
+                <li><strong>GPU:</strong> Optional but recommended (4GB+ VRAM)</li>
+            </ul>
+
+            <h3>Installation</h3>
+            <div class="code-block"># Clone repository
+git clone &lt;repository-url&gt;
+cd multimodel-embedding-server
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start development server
+uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435</div>
+
+            <h3>Production Deployment</h3>
+            <div class="code-block"># Create systemd service file
+sudo nano /etc/systemd/system/multimodel_embedding_server.service
+
+# Add the following content to the service file:
+[Unit]
+Description=Multimodel Embedding Server
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+Group=your-group
+WorkingDirectory=/path/to/multimodel_embedding_server
+Environment=CUDA_VISIBLE_DEVICES=0
+TimeoutStartSec=900
+
+ExecStart=/path/to/venv/bin/gunicorn multimodel_embedding_server:app \
+  -w 1 \
+  -k uvicorn.workers.UvicornWorker \
+  -b 0.0.0.0:11435 \
+  --timeout 300 \
+  --preload
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable multimodel_embedding_server
+sudo systemctl start multimodel_embedding_server</div>
+
+            <h3>Health Monitoring</h3>
+            <div class="code-block"># Check service status
+sudo systemctl status multimodel_embedding_server
+
+# View logs
+sudo journalctl -u multimodel_embedding_server -f
+
+# Check health endpoint
+curl http://localhost:11435/health
+
+# Monitor resource usage
+htop
+# or
+nvidia-smi  # For GPU monitoring</div>
+
+            <h3>Troubleshooting</h3>
+            
+            <h4>Common Issues</h4>
+            <div class="alert alert-warning">
+                <strong>Models not loading:</strong>
+                <ul>
+                    <li>Check internet connection (models download on first run)</li>
+                    <li>Verify sufficient disk space (10GB+ required)</li>
+                    <li>Increase TimeoutStartSec=900 for slower connections</li>
+                </ul>
+            </div>
+
+            <div class="alert alert-warning">
+                <strong>CUDA out of memory:</strong>
+                <ul>
+                    <li>Use CPU mode: export CUDA_VISIBLE_DEVICES=""</li>
+                    <li>Reduce batch size in requests</li>
+                    <li>Ensure single worker mode (-w 1)</li>
+                </ul>
+            </div>
+
+            <div class="alert alert-warning">
+                <strong>Slow performance:</strong>
+                <ul>
+                    <li>Use batch endpoints instead of individual requests</li>
+                    <li>Enable GPU acceleration if available</li>
+                    <li>Increase batch size within memory limits</li>
+                </ul>
+            </div>
+
+            <h3>Configuration Files</h3>
+            
+            <h4>requirements.txt</h4>
+            <div class="code-block">fastapi==0.104.1
+uvicorn[standard]==0.24.0
+transformers==4.36.2
+torch>=2.0.0
+sentence-transformers==2.2.2
+gunicorn==21.2.0
+scikit-learn>=1.3.0
+scipy>=1.11.0
+numpy>=1.24.0
+requests>=2.31.0
+click>=8.0.0,<8.2</div>
+
+            <h4>.gitignore</h4>
+            <div class="code-block"># Virtual environments
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Model cache
+model_cache/
+.cache/
+
+# Runtime files
+*.pid
+logs/
+
+# IDE files
+.vscode/
+.idea/</div>
+
+            <h3>Reverse Proxy Setup (Nginx)</h3>
+            <div class="code-block"># Create Nginx configuration file
+sudo nano /etc/nginx/sites-available/embedding-server
+
+# Add the following configuration:
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    client_max_body_size 10M;
+    
+    location / {
+        proxy_pass http://127.0.0.1:11435;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Increase timeouts for model processing
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+        proxy_send_timeout 300s;
+    }
+    
+    # Health check endpoint
+    location /health {
+        proxy_pass http://127.0.0.1:11435/health;
+        access_log off;
+    }
+}
+
+# Enable the site
+sudo ln -s /etc/nginx/sites-available/embedding-server /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx</div>
+        </section>
+
+        <section id="api-testing">
+            <h2>🧪 API Testing</h2>
+            
+            <h3>Interactive Testing</h3>
+            <p>Visit <code>http://localhost:11435/docs</code> for interactive API documentation with built-in testing interface.</p>
+            
+            <h3>Test Scripts</h3>
+            
+            <h4>Basic Functionality Test</h4>
+            <div class="code-block">#!/bin/bash
+# test_basic.sh
+
+echo "Testing basic functionality..."
+
+# Test health endpoint
+echo "1. Health check:"
+curl -s http://localhost:11435/health | jq .
+
+# Test single embedding
+echo -e "\n2. Single embedding:"
+curl -s -X POST "http://localhost:11435/api/embeddings" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "diabetes", "model": "biomedbert"}' | \
+  jq '.embedding | length'
+
+# Test batch embeddings
+echo -e "\n3. Batch embeddings:"
+curl -s -X POST "http://localhost:11435/api/embed" \
+  -H "Content-Type: application/json" \
+  -d '{"input": ["diabetes", "hypertension"], "model": "biomedbert"}' | \
+  jq '.embeddings | length'
+
+# Test similarity
+echo -e "\n4. Similarity calculation:"
+curl -s -X POST "http://localhost:11435/api/similarity" \
+  -H "Content-Type: application/json" \
+  -d '{"text1": "diabetes", "text2": "hyperglycemia", "model": "biomedbert", "metric": "cosine"}' | \
+  jq '.similarity'
+
+echo -e "\nAll tests completed!"</div>
+
+            <h4>Performance Test</h4>
+            <div class="code-block">#!/bin/bash
+# test_performance.sh
+
+echo "Running performance tests..."
+
+# Test concurrent requests
+echo "Testing concurrent requests (10 simultaneous):"
+for i in {1..10}; do
+  curl -s -X POST "http://localhost:11435/api/embeddings" \
+    -H "Content-Type: application/json" \
+    -d "{\"prompt\": \"test request $i\", \"model\": \"biomedbert\"}" &
+done
+wait
+
+# Test batch sizes
+echo -e "\nTesting different batch sizes:"
+for size in 4 8 16 32; do
+  echo "Batch size: $size"
+  time curl -s -X POST "http://localhost:11435/api/embed" \
+    -H "Content-Type: application/json" \
+    -d "{\"input\": $(python3 -c "import json; print(json.dumps([f'term{i}' for i in range($size)]))"), \"model\": \"biomedbert\"}" > /dev/null
+done</div>
+
+            <h3>Python Test Suite</h3>
+            <div class="code-block">import requests
+import time
+import json
+
+class EmbeddingServerTest:
+    def __init__(self, base_url="http://localhost:11435"):
+        self.base_url = base_url
+    
+    def test_health(self):
+        """Test health endpoint"""
+        response = requests.get(f"{self.base_url}/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        print("✓ Health check passed")
+    
+    def test_models(self):
+        """Test models endpoint"""
+        response = requests.get(f"{self.base_url}/api/models")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["models"]) >= 3
+        print("✓ Models endpoint passed")
+    
+    def test_single_embedding(self):
+        """Test single embedding generation"""
+        response = requests.post(
+            f"{self.base_url}/api/embeddings",
+            json={"prompt": "test", "model": "biomedbert"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["embedding"]) == 768
+        print("✓ Single embedding passed")
+    
+    def test_batch_embedding(self):
+        """Test batch embedding generation"""
+        response = requests.post(
+            f"{self.base_url}/api/embed",
+            json={"input": ["test1", "test2"], "model": "biomedbert"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["embeddings"]) == 2
+        assert len(data["embeddings"][0]) == 768
+        print("✓ Batch embedding passed")
+    
+    def test_similarity(self):
+        """Test similarity calculation"""
+        response = requests.post(
+            f"{self.base_url}/api/similarity",
+            json={
+                "text1": "diabetes",
+                "text2": "hyperglycemia",
+                "model": "biomedbert",
+                "metric": "cosine"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert 0 <= data["similarity"] <= 1
+        print("✓ Similarity calculation passed")
+    
+    def test_batch_similarity(self):
+        """Test batch similarity calculation"""
+        response = requests.post(
+            f"{self.base_url}/api/similarity/batch",
+            json={
+                "texts": ["diabetes", "hypertension", "stroke"],
+                "model": "biomedbert",
+                "metric": "cosine"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["similarity_matrix"]) == 3
+        assert len(data["similarity_matrix"][0]) == 3
+        print("✓ Batch similarity passed")
+    
+    def run_all_tests(self):
+        """Run all tests"""
+        print("Running embedding server tests...\n")
+        
+        try:
+            self.test_health()
+            self.test_models()
+            self.test_single_embedding()
+            self.test_batch_embedding()
+            self.test_similarity()
+            self.test_batch_similarity()
+            print("\n🎉 All tests passed!")
+        except Exception as e:
+            print(f"\n❌ Test failed: {e}")
+
+# Run tests
+if __name__ == "__main__":
+    tester = EmbeddingServerTest()
+    tester.run_all_tests()</div>
+        </section>
+
+        <section id="integration">
+            <h2>🔗 Integration Examples</h2>
+            
+            <h3>LangChain Integration</h3>
+            <div class="code-block">from langchain.embeddings.base import Embeddings
+from typing import List
+import requests
+
+class MultiModelEmbeddings(Embeddings):
+    def __init__(self, base_url="http://localhost:11435", model="biomedbert"):
+        self.base_url = base_url
+        self.model = model
+    
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a list of documents"""
+        response = requests.post(
+            f"{self.base_url}/api/embed",
+            json={"input": texts, "model": self.model}
+        )
+        return response.json()["embeddings"]
+    
+    def embed_query(self, text: str) -> List[float]:
+        """Embed a single query"""
+        response = requests.post(
+            f"{self.base_url}/api/embeddings",
+            json={"prompt": text, "model": self.model}
+        )
+        return response.json()["embedding"]
+
+# Usage with LangChain
+from langchain.vectorstores import FAISS
+from langchain.text_splitter import CharacterTextSplitter
+
+# Initialize embeddings
+embeddings = MultiModelEmbeddings(model="biomedbert")
+
+# Create vector store
+documents = [
+    "Diabetes is a metabolic disorder",
+    "Hypertension affects cardiovascular health",
+    "Cancer treatment requires multidisciplinary approach"
+]
+
+vectorstore = FAISS.from_texts(documents, embeddings)
+
+# Search similar documents
+results = vectorstore.similarity_search("blood sugar disorders")
+print(results)</div>
+
+            <h3>FastAPI Client Class</h3>
+            <div class="code-block">import asyncio
+import aiohttp
+from typing import List, Dict, Any
+
+class AsyncEmbeddingClient:
+    def __init__(self, base_url: str = "http://localhost:11435"):
+        self.base_url = base_url
+        self.session = None
+    
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            await self.session.close()
+    
+    async def get_embedding(self, text: str, model: str = "biomedbert") -> List[float]:
+        """Get single embedding"""
+        async with self.session.post(
+            f"{self.base_url}/api/embeddings",
+            json={"prompt": text, "model": model}
+        ) as response:
+            data = await response.json()
+            return data["embedding"]
+    
+    async def get_embeddings(self, texts: List[str], model: str = "biomedbert") -> List[List[float]]:
+        """Get batch embeddings"""
+        async with self.session.post(
+            f"{self.base_url}/api/embed",
+            json={"input": texts, "model": model}
+        ) as response:
+            data = await response.json()
+            return data["embeddings"]
+    
+    async def calculate_similarity(
+        self, 
+        text1: str, 
+        text2: str, 
+        model: str = "biomedbert", 
+        metric: str = "cosine"
+    ) -> float:
+        """Calculate similarity between two texts"""
+        async with self.session.post(
+            f"{self.base_url}/api/similarity",
+            json={"text1": text1, "text2": text2, "model": model, "metric": metric}
+        ) as response:
+            data = await response.json()
+            return data["similarity"]
+
+# Usage example
+async def main():
+    async with AsyncEmbeddingClient() as client:
+        # Get single embedding
+        embedding = await client.get_embedding("diabetes mellitus")
+        print(f"Embedding dimension: {len(embedding)}")
+        
+        # Get batch embeddings
+        texts = ["diabetes", "hypertension", "stroke"]
+        embeddings = await client.get_embeddings(texts)
+        print(f"Generated {len(embeddings)} embeddings")
+        
+        # Calculate similarity
+        similarity = await client.calculate_similarity("diabetes", "hyperglycemia")
+        print(f"Similarity: {similarity:.3f}")
+
+# Run async example
+asyncio.run(main())</div>
+
+            <h3>Jupyter Notebook Helper</h3>
+            <div class="code-block">import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.decomposition import PCA
+import requests
+
+class EmbeddingAnalyzer:
+    def __init__(self, base_url="http://localhost:11435"):
+        self.base_url = base_url
+    
+    def analyze_terms(self, terms: List[str], model: str = "biomedbert"):
+        """Analyze and visualize medical terms"""
+        
+        # Get embeddings
+        response = requests.post(
+            f"{self.base_url}/api/embed",
+            json={"input": terms, "model": model}
+        )
+        embeddings = np.array(response.json()["embeddings"])
+        
+        # Calculate similarity matrix
+        response = requests.post(
+            f"{self.base_url}/api/similarity/batch",
+            json={"texts": terms, "model": model, "metric": "cosine"}
+        )
+        similarity_matrix = np.array(response.json()["similarity_matrix"])
+        
+        # Create visualizations
+        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+        
+        # Similarity heatmap
+        sns.heatmap(
+            similarity_matrix, 
+            annot=True, 
+            fmt='.2f',
+            xticklabels=terms,
+            yticklabels=terms,
+            cmap='viridis',
+            ax=axes[0]
+        )
+        axes[0].set_title('Similarity Matrix')
+        
+        # PCA visualization
+        pca = PCA(n_components=2)
+        embeddings_2d = pca.fit_transform(embeddings)
+        
+        axes[1].scatter(embeddings_2d[:, 0], embeddings_2d[:, 1])
+        for i, term in enumerate(terms):
+            axes[1].annotate(term, (embeddings_2d[i, 0], embeddings_2d[i, 1]))
+        axes[1].set_title('PCA Visualization')
+        axes[1].set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.1%} variance)')
+        axes[1].set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.1%} variance)')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        return {
+            'embeddings': embeddings,
+            'similarity_matrix': similarity_matrix,
+            'pca_coords': embeddings_2d
+        }
+
+# Usage in Jupyter
+analyzer = EmbeddingAnalyzer()
+medical_terms = [
+    "diabetes mellitus",
+    "hyperglycemia", 
+    "insulin resistance",
+    "hypertension",
+    "cardiovascular disease",
+    "myocardial infarction"
+]
+
+results = analyzer.analyze_terms(medical_terms, model="biomedbert")
+print("Analysis complete! Check the visualizations above.")</div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Multi-Model Embedding Server Documentation</p>
+            <p>Built with FastAPI • Powered by BiomedBERT, BlueBERT & Multilingual-E5-Large</p>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Copy code blocks to clipboard
+        document.querySelectorAll('.code-block').forEach(block => {
+            block.style.position = 'relative';
+            block.style.cursor = 'pointer';
+            
+            const copyButton = document.createElement('button');
+            copyButton.textContent = 'Copy';
+            copyButton.style.position = 'absolute';
+            copyButton.style.top = '10px';
+            copyButton.style.right = '10px';
+            copyButton.style.padding = '5px 10px';
+            copyButton.style.background = '#4a5568';
+            copyButton.style.color = 'white';
+            copyButton.style.border = 'none';
+            copyButton.style.borderRadius = '4px';
+            copyButton.style.cursor = 'pointer';
+            copyButton.style.fontSize = '12px';
+            copyButton.style.opacity = '0';
+            copyButton.style.transition = 'opacity 0.2s';
+            
+            block.appendChild(copyButton);
+            
+            block.addEventListener('mouseenter', () => {
+                copyButton.style.opacity = '1';
+            });
+            
+            block.addEventListener('mouseleave', () => {
+                copyButton.style.opacity = '0';
+            });
+            
+            copyButton.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                try {
+                    await navigator.clipboard.writeText(block.textContent.replace('Copy', '').trim());
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyButton.textContent = 'Copy';
+                    }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                }
+            });
+        });
+
+        // Highlight current section in navigation
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section[id]');
+            const navLinks = document.querySelectorAll('.nav-link');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.pageYOffset >= (sectionTop - 200)) {
+                    current = section.getAttribute('id');
+                }
+            });
+            
+            navLinks.forEach(link => {
+                link.style.background = '';
+                link.style.color = '#4a5568';
+                if (link.getAttribute('href') === '#' + current) {
+                    link.style.background = '#edf2f7';
+                    link.style.color = '#2d3748';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
