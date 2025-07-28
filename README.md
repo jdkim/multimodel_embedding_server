@@ -4,7 +4,7 @@ A web embedding server that provides text embeddings with similarity calculation
 
 ## 🚀 Features
 
-- **Multiple Models**: BiomedBERT, BlueBERT for biomedical text and Multilingual-E5-Large for general/multilingual text
+- **Multiple Models**: PubMedBERT, BlueBERT for biomedical text and Multilingual-E5-Large for general/multilingual text
 - **Ollama-Compatible API**: Drop-in replacement for Ollama embedding endpoints
 - **Similarity Calculations**: Built-in cosine, euclidean, manhattan, and chebyshev distance metrics
 - **High Performance**: FastAPI with async support and concurrent request handling
@@ -15,7 +15,7 @@ A web embedding server that provides text embeddings with similarity calculation
 
 | Model | Key | Use Case | Embedding Dimension |
 |-------|-----|----------|-------------------|
-| BiomedBERT | `biomedbert` | Biomedical text, scientific papers (trained from scratch) | 768 |
+| PubMedBERT | `pubmedbert` | Biomedical text, scientific papers (optimized for embeddings) | 768 |
 | BlueBERT | `bluebert` | Clinical notes, biomedical text (PubMed + MIMIC-III) | 768 |
 | Multilingual-E5-Large | `multilingual-e5-large` | General text, multilingual content | 1024 |
 
@@ -32,8 +32,8 @@ This project uses [pip-tools](https://pip-tools.readthedocs.io/) to manage depen
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
-   cd <project-name>
+   git clone multimodel_embedding_server
+   cd multimodel_embedding_server
    ```
 
 2. **Create a virtual environment (recommended):**
@@ -106,7 +106,7 @@ The server will automatically download and load the models on the first startup 
 # Get embedding for biomedical text
 curl -X POST "http://localhost:11435/api/embeddings" \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "myocardial infarction", "model": "biomedbert"}'
+  -d '{"prompt": "myocardial infarction", "model": "pubmedbert"}'
 
 # Get embedding with BlueBERT for clinical text
 curl -X POST "http://localhost:11435/api/embeddings" \
@@ -121,7 +121,7 @@ curl -X POST "http://localhost:11435/api/embeddings" \
 # Calculate similarity between terms
 curl -X POST "http://localhost:11435/api/similarity" \
   -H "Content-Type: application/json" \
-  -d '{"text1": "myocardial infarction", "text2": "heart attack", "model": "biomedbert", "metric": "cosine"}'
+  -d '{"text1": "myocardial infarction", "text2": "heart attack", "model": "pubmedbert", "metric": "cosine"}'
 ```
 
 ## 🔌 API Endpoints
@@ -135,7 +135,7 @@ Get a single embedding (Ollama-compatible)
 ```json
 {
   "prompt": "your text here",
-  "model": "biomedbert"
+  "model": "pubmedbert"
 }
 ```
 
@@ -143,7 +143,7 @@ Get a single embedding (Ollama-compatible)
 ```json
 {
   "embedding": [0.1, 0.2, ...],
-  "model": "biomedbert"
+  "model": "pubmedbert"
 }
 ```
 
@@ -177,7 +177,7 @@ Calculate similarity between two texts
 {
   "text1": "myocardial infarction",
   "text2": "heart attack",
-  "model": "biomedbert",
+  "model": "pubmedbert",
   "metric": "cosine"
 }
 ```
@@ -188,7 +188,7 @@ Calculate similarity between two texts
   "similarity": 0.8234,
   "distance": 0.1766,
   "metric": "cosine",
-  "model": "biomedbert",
+  "model": "pubmedbert",
   "text1": "myocardial infarction",
   "text2": "heart attack"
 }
@@ -256,7 +256,7 @@ import requests
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-def compare_biomedical_terms(term1, term2, model="biomedbert"):
+def compare_biomedical_terms(term1, term2, model="pubmedbert"):
     """Compare similarity between biomedical terms"""
     response = requests.post(
         "http://localhost:11435/api/similarity",
@@ -276,9 +276,9 @@ similarity = compare_biomedical_terms("myocardial infarction", "heart attack")
 print(f"Similarity: {similarity:.3f}")
 
 # Compare across models
-biomedbert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "biomedbert")
+pubmedbert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "pubmedbert")
 bluebert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "bluebert")
-print(f"BiomedBERT: {biomedbert_sim:.3f}, BlueBERT: {bluebert_sim:.3f}")
+print(f"PubMedBERT: {pubmedbert_sim:.3f}, BlueBERT: {bluebert_sim:.3f}")
 ```
 
 ### Clinical Text Analysis
@@ -367,7 +367,7 @@ process_multilingual_text()
 
 ```python
 class MedicalSearch:
-    def __init__(self, model="biomedbert"):
+    def __init__(self, model="pubmedbert"):
         self.model = model
         self.documents = []
         self.embeddings = []
@@ -428,7 +428,7 @@ class MedicalSearch:
         return results
 
 # Usage
-search_engine = MedicalSearch(model="biomedbert")
+search_engine = MedicalSearch(model="pubmedbert")
 search_engine.add_documents([
     "Diabetes mellitus is a metabolic disorder characterized by high blood sugar",
     "Hypertension is persistently high blood pressure in the arteries",
@@ -484,7 +484,7 @@ MODEL_CONFIGS = {
 
 | Model | Single Embedding | Batch (32 texts) | Memory Usage |
 |-------|------------------|-------------------|---------------|
-| BiomedBERT | ~50ms | ~1.5s | ~1.2GB |
+| PubMedBERT | ~50ms | ~1.5s | ~1.2GB |
 | BlueBERT | ~50ms | ~1.5s | ~1.2GB |
 | Multilingual-E5-Large | ~80ms | ~2.5s | ~2.1GB |
 
@@ -500,7 +500,7 @@ MODEL_CONFIGS = {
 
 - Use batch processing (`/api/embed`) for multiple texts - much more efficient than individual calls
 - Use `/api/similarity/batch` for similarity matrices instead of individual comparisons
-- Choose the right model: BiomedBERT for research papers, BlueBERT for clinical notes, E5-Large for multilingual
+- Choose the right model: PubMedBERT for research papers, BlueBERT for clinical notes, E5-Large for multilingual
 - Run on GPU for 3-5x better performance
 - Use single worker mode when using GPU to avoid memory conflicts
 - Consider model quantization for production deployments with memory constraints
@@ -509,7 +509,7 @@ MODEL_CONFIGS = {
 
 ```python
 # Good practice: chunk large lists
-def process_large_list(texts, model="biomedbert", chunk_size=32):
+def process_large_list(texts, model="pubmedbert", chunk_size=32):
     all_embeddings = []
     for i in range(0, len(texts), chunk_size):
         chunk = texts[i:i + chunk_size]
@@ -540,14 +540,14 @@ export CUDA_VISIBLE_DEVICES=""
 
 # Or reduce batch size in requests
 curl -X POST "http://localhost:11435/api/embed" \
-  -d '{"input": ["term1", "term2"], "model": "biomedbert"}'  # Smaller batch
+  -d '{"input": ["term1", "term2"], "model": "pubmedbert"}'  # Smaller batch
 ```
 
 **Slow similarity calculations:**
 ```bash
 # Use batch endpoint for multiple comparisons
 curl -X POST "http://localhost:11435/api/similarity/batch" \
-  -d '{"texts": ["term1", "term2", "term3"], "model": "biomedbert"}'
+  -d '{"texts": ["term1", "term2", "term3"], "model": "pubmedbert"}'
 ```
 
 **Model loading timeout:**
@@ -560,14 +560,14 @@ curl -X POST "http://localhost:11435/api/similarity/batch" \
 The server provides detailed logging:
 ```
 🚀 Starting Multi-Model Embedding Server...
-🔄 Loading biomedbert (microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract)...
-✅ biomedbert loaded in 45.32s (109,482,240 parameters)
+🔄 Loading pubmedbert (NeuML/pubmedbert-base-embeddings)...
+✅ pubmedbert loaded in 45.32s
 🔄 Loading bluebert (bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12)...
 ✅ bluebert loaded in 38.45s (109,482,240 parameters)
 🔄 Loading multilingual-e5-large (intfloat/multilingual-e5-large)...
 ✅ multilingual-e5-large loaded in 52.18s
 🎉 All models loaded successfully!
-📝 [biomedbert] Embedded text (len=19) in 0.043s
+📝 [pubmedbert] Embedded text (len=19) in 0.043s
 🔍 [bluebert] Calculated cosine similarity in 0.089s: 0.8234
 ```
 
@@ -585,7 +585,7 @@ MIT License - see LICENSE file for details
 
 ## 🙏 Acknowledgments
 
-- [BiomedBERT](https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract) by Microsoft Research
+- [PubMedBERT](https://huggingface.co/NeuML/pubmedbert-base-embeddings) by NeuML for biomedical embeddings
 - [BlueBERT](https://huggingface.co/bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12) by NCBI for biomedical + clinical text
 - [Multilingual-E5-Large](https://huggingface.co/intfloat/multilingual-e5-large) by Beijing Academy of Artificial Intelligence
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework

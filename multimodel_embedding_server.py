@@ -31,10 +31,10 @@ tokenizers = {}
 
 # Model configurations
 MODEL_CONFIGS = {
-    "biomedbert": {
-        "name": "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract",
-        "type": "transformers",
-        "description": "Biomedical domain-specific BERT trained from scratch"
+    "pubmedbert": {
+        "name": "NeuML/pubmedbert-base-embeddings",
+        "type": "sentence_transformers",
+        "description": "PubMed BERT optimized for embeddings and similarity search"
     },
     "multilingual-e5-large": {
         "name": "intfloat/multilingual-e5-large", 
@@ -50,11 +50,11 @@ MODEL_CONFIGS = {
 
 class EmbeddingRequest(BaseModel):
     prompt: str
-    model: str = "biomedbert"
+    model: str = "pubmedbert"
 
 class EmbedRequest(BaseModel):
     input: Union[str, List[str]]
-    model: str = "biomedbert"
+    model: str = "pubmedbert"
 
 class EmbeddingResponse(BaseModel):
     embedding: List[float]
@@ -66,7 +66,7 @@ class EmbedResponse(BaseModel):
 class SimilarityRequest(BaseModel):
     text1: str
     text2: str
-    model: str = "biomedbert"
+    model: str = "pubmedbert"
     metric: str = "cosine"  # cosine, euclidean, manhattan, chebyshev
 
 class SimilarityResponse(BaseModel):
@@ -79,7 +79,7 @@ class SimilarityResponse(BaseModel):
 
 class BatchSimilarityRequest(BaseModel):
     texts: List[str]
-    model: str = "biomedbert"
+    model: str = "pubmedbert"
     metric: str = "cosine"
 
 class BatchSimilarityResponse(BaseModel):
