@@ -36,15 +36,10 @@ MODEL_CONFIGS = {
         "type": "sentence_transformers",
         "description": "PubMed BERT optimized for embeddings and similarity search"
     },
-    "multilingual-e5-large": {
-        "name": "intfloat/multilingual-e5-large", 
-        "type": "sentence_transformers",
-        "description": "Multilingual embedding model with strong performance"
-    },
-    "bluebert": {
-        "name": "bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12",
+    "biomedbert": {
+        "name": "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext",
         "type": "transformers",
-        "description": "BlueBERT pre-trained on PubMed abstracts and MIMIC-III clinical notes"
+        "description": "Microsoft BiomedBERT trained on biomedical abstracts and full-text"
     }
 }
 
@@ -91,6 +86,33 @@ class BatchSimilarityResponse(BaseModel):
 
 class ModelListResponse(BaseModel):
     models: List[Dict[str, Any]]
+
+class DocumentSimilarityRequest(BaseModel):
+    keyword: str
+    document: str
+    model: str = "pubmedbert"
+    chunk_size_tokens: int = 512
+    overlap_percent: int = 50
+    metric: str = "cosine"
+
+class DocumentSimilarityResponse(BaseModel):
+    keyword: str
+    best_chunk: str
+    similarity_score: float
+    chunk_index: int
+    total_chunks: int
+    chunk_start_offset: int
+    chunk_end_offset: int
+    metric: str
+    model: str
+
+class DocumentSimilarityRecursiveRequest(BaseModel):
+    keyword: str
+    document: str
+    model: str = "pubmedbert"
+    max_tokens: int = 100
+    separators: List[str] = ["\n\n", "\n", ". ", " "]
+    metric: str = "cosine"
 
 async def load_transformers_model(model_key: str, model_name: str):
     """Load a transformers model"""
@@ -234,6 +256,365 @@ def calculate_similarity_matrix(embeddings: List[List[float]], metric: str = "co
 
     return similarity_matrix.tolist(), distance_matrix.tolist()
 
+def chunk_document_with_sliding_window_tokens(document: str, model_key: str, chunk_size_tokens: int = 512, overlap_percent: int = 0) -> List[dict]:
+    """
+    Chunk document using sliding window with specified overlap percentage based on tokens.
+    
+    Args:
+        document: The document to chunk
+        model_key: The model key to get the appropriate tokenizer
+        chunk_size_tokens: Size of each chunk in tokens
+        overlap_percent: Percentage of overlap between chunks (0-100)
+    
+    Returns:
+        List of dictionaries with 'text', 'start_offset', 'end_offset' keys
+    """
+    if overlap_percent < 0 or overlap_percent > 100:
+        raise ValueError("overlap_percent must be between 0 and 100")
+    
+    config = MODEL_CONFIGS[model_key]
+    
+    # Get tokenizer based on model type
+    if config["type"] == "sentence_transformers":
+        # For sentence transformers, we'll use a basic tokenizer approach
+        # Split by whitespace as approximation since we don't have direct access to model tokenizer
+        tokens = document.split()
+        
+        if len(tokens) <= chunk_size_tokens:
+            return [{"text": document, "start_offset": 0, "end_offset": len(document)}]
+        
+        chunks = []
+        overlap_size = int(chunk_size_tokens * overlap_percent / 100)
+        step_size = chunk_size_tokens - overlap_size
+        
+        start = 0
+        while start < len(tokens):
+            end = min(start + chunk_size_tokens, len(tokens))
+            chunk_tokens = tokens[start:end]
+            chunk_text = ' '.join(chunk_tokens)
+            
+            # Find character offsets in original document
+            if start == 0:
+                start_offset = 0
+            else:
+                # Find the start of the first token in this chunk
+                prefix = ' '.join(tokens[:start])
+                start_offset = len(prefix) + (1 if prefix else 0)  # +1 for space
+            
+            # Find end offset
+            if end >= len(tokens):
+                end_offset = len(document)
+            else:
+                prefix_with_chunk = ' '.join(tokens[:end])
+                end_offset = len(prefix_with_chunk)
+            
+            # Only add non-empty chunks
+            if chunk_text.strip():
+                chunks.append({
+                    "text": chunk_text,
+                    "start_offset": start_offset,
+                    "end_offset": end_offset
+                })
+            
+            # If we've reached the end, break
+            if end >= len(tokens):
+                break
+                
+            start += step_size
+        
+        return chunks
+    
+    elif config["type"] == "transformers":
+        # For transformers models, use the actual tokenizer
+        tokenizer = tokenizers[model_key]
+        
+        # Get token-to-character mapping
+        encoding = tokenizer(document, return_offsets_mapping=True, add_special_tokens=False)
+        tokens = encoding.input_ids
+        offsets = encoding.offset_mapping
+        
+        if len(tokens) <= chunk_size_tokens:
+            return [{"text": document, "start_offset": 0, "end_offset": len(document)}]
+        
+        chunks = []
+        overlap_size = int(chunk_size_tokens * overlap_percent / 100)
+        step_size = chunk_size_tokens - overlap_size
+        
+        start = 0
+        while start < len(tokens):
+            end = min(start + chunk_size_tokens, len(tokens))
+            chunk_tokens = tokens[start:end]
+            
+            # Get character offsets from token offsets
+            start_offset = offsets[start][0]
+            end_offset = offsets[end - 1][1]
+            
+            chunk_text = document[start_offset:end_offset]
+            
+            # Only add non-empty chunks
+            if chunk_text.strip():
+                chunks.append({
+                    "text": chunk_text,
+                    "start_offset": start_offset,
+                    "end_offset": end_offset
+                })
+            
+            # If we've reached the end, break
+            if end >= len(tokens):
+                break
+                
+            start += step_size
+        
+        return chunks
+    
+    else:
+        raise ValueError(f"Unsupported model type: {config['type']}")
+
+def count_tokens_approximation(text: str, model_key: str) -> int:
+    """
+    Approximate token count for text using model-appropriate method.
+    
+    Args:
+        text: The text to count tokens for
+        model_key: The model key to determine tokenization method
+    
+    Returns:
+        Approximate token count
+    """
+    config = MODEL_CONFIGS[model_key]
+    
+    if config["type"] == "sentence_transformers":
+        # For sentence transformers, approximate using whitespace splitting
+        return len(text.split())
+    elif config["type"] == "transformers":
+        # For transformers models, use actual tokenizer
+        tokenizer = tokenizers[model_key]
+        return len(tokenizer.encode(text, add_special_tokens=False))
+    else:
+        raise ValueError(f"Unsupported model type: {config['type']}")
+
+def chunk_document_recursive(document: str, model_key: str, max_tokens: int = 100, 
+                           separators: List[str] = None) -> List[dict]:
+    """
+    Recursively chunk document using hierarchical separators that respect document structure.
+    Only splits when necessary and tries to split around the middle.
+    
+    Args:
+        document: The document to chunk
+        model_key: The model key for tokenization
+        max_tokens: Maximum tokens per chunk
+        separators: List of separators in order of preference (largest to smallest)
+    
+    Returns:
+        List of dictionaries with 'text', 'start_offset', 'end_offset' keys
+    """
+    if separators is None:
+        # Default hierarchy: paragraphs, newlines, sentences, words
+        separators = ["\n\n", "\n", ". ", " "]
+    
+    def _split_at_middle(text: str, separator: str, start_offset: int) -> List[dict]:
+        """
+        Split text around the middle using the given separator and track offsets.
+        """
+        parts = text.split(separator)
+        if len(parts) <= 1:
+            return [{"text": text, "start_offset": start_offset, "end_offset": start_offset + len(text)}]
+        
+        # Find the middle point
+        middle = len(parts) // 2
+        
+        # Split into two parts around the middle
+        left_parts = parts[:middle]
+        right_parts = parts[middle:]
+        
+        # Reconstruct the text with separators and calculate offsets
+        left_text = separator.join(left_parts)
+        if separator != " " and left_text and right_parts:
+            left_text += separator
+        
+        right_text = separator.join(right_parts)
+        
+        # Calculate character positions
+        left_end = start_offset + len(left_text)
+        right_start = start_offset + len(left_text)
+        if separator != " " and left_text and right_parts:
+            right_start -= len(separator)  # Adjust for added separator
+        
+        result = []
+        if left_text.strip():
+            result.append({
+                "text": left_text,
+                "start_offset": start_offset,
+                "end_offset": left_end
+            })
+        
+        if right_text.strip():
+            result.append({
+                "text": right_text,
+                "start_offset": right_start,
+                "end_offset": start_offset + len(text)
+            })
+        
+        return result
+    
+    def _recursive_split(text: str, start_offset: int, sep_index: int) -> List[dict]:
+        """
+        Recursively split text only when necessary and track character offsets.
+        """
+        # Base case: if text is short enough, return as-is
+        token_count = count_tokens_approximation(text, model_key)
+        if token_count <= max_tokens:
+            if text.strip():
+                return [{"text": text, "start_offset": start_offset, "end_offset": start_offset + len(text)}]
+            else:
+                return []
+        
+        # If no more separators available, return the text as-is (can't split further)
+        if sep_index >= len(separators):
+            if text.strip():
+                return [{"text": text, "start_offset": start_offset, "end_offset": start_offset + len(text)}]
+            else:
+                return []
+        
+        # Try to split with current separator around the middle
+        separator = separators[sep_index]
+        split_parts = _split_at_middle(text, separator, start_offset)
+        
+        # If splitting didn't help (only one chunk), try next separator
+        if len(split_parts) <= 1:
+            return _recursive_split(text, start_offset, sep_index + 1)
+        
+        # Process each split part recursively
+        result = []
+        for part_info in split_parts:
+            part_text = part_info["text"]
+            part_start = part_info["start_offset"]
+            
+            if not part_text.strip():
+                continue
+                
+            part_tokens = count_tokens_approximation(part_text, model_key)
+            if part_tokens > max_tokens:
+                # This part is still too large, split it further
+                sub_chunks = _recursive_split(part_text, part_start, sep_index)
+                result.extend(sub_chunks)
+            else:
+                # This part is small enough
+                result.append(part_info)
+        
+        return result
+    
+    # Start recursive splitting
+    chunks = _recursive_split(document, 0, 0)
+    
+    # Filter out empty chunks and return
+    return [chunk for chunk in chunks if chunk["text"].strip()]
+
+def find_most_similar_chunk_recursive(keyword: str, document: str, model_key: str, 
+                                    max_tokens: int = 100, separators: List[str] = None,
+                                    metric: str = "cosine"):
+    """
+    Find the most similar chunk in a document to a keyword using recursive chunking strategy.
+    Only works with sentence_transformers models.
+    
+    Args:
+        keyword: The keyword to compare against
+        document: The document to search in
+        model_key: The model to use (must be sentence_transformers type)
+        max_tokens: Maximum tokens per chunk
+        separators: List of separators for recursive splitting
+        metric: Similarity metric to use
+    
+    Returns:
+        Tuple of (best_chunk_text, max_similarity, chunk_index, total_chunks, start_offset, end_offset)
+    """
+    config = MODEL_CONFIGS[model_key]
+    if config["type"] != "sentence_transformers":
+        raise ValueError(f"Model '{model_key}' must be of type 'sentence_transformers' for document similarity")
+    
+    # Chunk the document using recursive strategy
+    chunks = chunk_document_recursive(document, model_key, max_tokens, separators)
+    
+    if not chunks:
+        return "", 0.0, -1, 0, 0, 0
+    
+    # Get embeddings for keyword and all chunks
+    model = models[model_key]
+    keyword_embedding = model.encode([keyword])[0]
+    chunk_texts = [chunk["text"] for chunk in chunks]
+    chunk_embeddings = model.encode(chunk_texts)
+    
+    # Calculate similarities
+    max_similarity = -1
+    best_chunk_idx = 0
+    
+    for i, chunk_embedding in enumerate(chunk_embeddings):
+        similarity, _ = calculate_similarity_and_distance(
+            keyword_embedding.tolist(), 
+            chunk_embedding.tolist(), 
+            metric
+        )
+        
+        if similarity > max_similarity:
+            max_similarity = similarity
+            best_chunk_idx = i
+    
+    best_chunk = chunks[best_chunk_idx]
+    return (best_chunk["text"], max_similarity, best_chunk_idx, len(chunks), 
+            best_chunk["start_offset"], best_chunk["end_offset"])
+
+def find_most_similar_chunk(keyword: str, document: str, model_key: str, chunk_size_tokens: int = 512, 
+                           overlap_percent: int = 50, metric: str = "cosine"):
+    """
+    Find the most similar chunk in a document to a keyword using sliding window strategy.
+    Only works with sentence_transformers models.
+    
+    Args:
+        keyword: The keyword to compare against
+        document: The document to search in
+        model_key: The model to use (must be sentence_transformers type)
+        chunk_size_tokens: Size of each chunk in tokens
+        overlap_percent: Percentage of overlap between chunks
+        metric: Similarity metric to use
+    
+    Returns:
+        Tuple of (best_chunk_text, max_similarity, chunk_index, total_chunks, start_offset, end_offset)
+    """
+    config = MODEL_CONFIGS[model_key]
+    if config["type"] != "sentence_transformers":
+        raise ValueError(f"Model '{model_key}' must be of type 'sentence_transformers' for document similarity")
+    
+    # Chunk the document using token-based chunking
+    chunks = chunk_document_with_sliding_window_tokens(document, model_key, chunk_size_tokens, overlap_percent)
+    
+    if not chunks:
+        return "", 0.0, -1, 0, 0, 0
+    
+    # Get embeddings for keyword and all chunks
+    model = models[model_key]
+    keyword_embedding = model.encode([keyword])[0]
+    chunk_texts = [chunk["text"] for chunk in chunks]
+    chunk_embeddings = model.encode(chunk_texts)
+    
+    # Calculate similarities
+    max_similarity = -1
+    best_chunk_idx = 0
+    
+    for i, chunk_embedding in enumerate(chunk_embeddings):
+        similarity, _ = calculate_similarity_and_distance(
+            keyword_embedding.tolist(), 
+            chunk_embedding.tolist(), 
+            metric
+        )
+        
+        if similarity > max_similarity:
+            max_similarity = similarity
+            best_chunk_idx = i
+    
+    best_chunk = chunks[best_chunk_idx]
+    return (best_chunk["text"], max_similarity, best_chunk_idx, len(chunks), 
+            best_chunk["start_offset"], best_chunk["end_offset"])
+
 def validate_model(model_key: str):
     """Validate that model exists and is loaded"""
     if model_key not in MODEL_CONFIGS:
@@ -370,6 +751,160 @@ async def calculate_batch_similarity(request: BatchSimilarityRequest):
         texts=request.texts
     )
 
+@app.post("/api/document-similarity", response_model=DocumentSimilarityResponse)
+async def document_similarity(request: DocumentSimilarityRequest):
+    """Find the most similar chunk in a document to a keyword"""
+    validate_model(request.model)
+    
+    # Validate empty inputs
+    if not request.keyword or not request.keyword.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="keyword cannot be empty or whitespace only"
+        )
+    
+    if not request.document or not request.document.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="document cannot be empty or whitespace only"
+        )
+    
+    # Validate that model is sentence_transformers type
+    config = MODEL_CONFIGS[request.model]
+    if config["type"] != "sentence_transformers":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model '{request.model}' must be of type 'sentence_transformers' for document similarity. Available sentence_transformers models: {[k for k, v in MODEL_CONFIGS.items() if v['type'] == 'sentence_transformers']}"
+        )
+    
+    # Validate metric
+    valid_metrics = ["cosine", "euclidean", "manhattan", "chebyshev"]
+    if request.metric not in valid_metrics:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid metric '{request.metric}'. Valid options: {valid_metrics}"
+        )
+    
+    # Validate parameters
+    if request.chunk_size_tokens <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="chunk_size_tokens must be positive"
+        )
+    
+    if request.overlap_percent < 0 or request.overlap_percent > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="overlap_percent must be between 0 and 100"
+        )
+    
+    start_time = time.time()
+    
+    try:
+        best_chunk, similarity_score, chunk_index, total_chunks, start_offset, end_offset = find_most_similar_chunk(
+            keyword=request.keyword,
+            document=request.document,
+            model_key=request.model,
+            chunk_size_tokens=request.chunk_size_tokens,
+            overlap_percent=request.overlap_percent,
+            metric=request.metric
+        )
+        
+        processing_time = time.time() - start_time
+        logger.info(f"🔍 [{request.model}] Found best chunk ({chunk_index+1}/{total_chunks}) with {request.metric} similarity {similarity_score:.4f} in {processing_time:.3f}s")
+        
+        return DocumentSimilarityResponse(
+            keyword=request.keyword,
+            best_chunk=best_chunk,
+            similarity_score=similarity_score,
+            chunk_index=chunk_index,
+            total_chunks=total_chunks,
+            chunk_start_offset=start_offset,
+            chunk_end_offset=end_offset,
+            metric=request.metric,
+            model=request.model
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing document similarity: {str(e)}")
+
+@app.post("/api/document-similarity-recursive", response_model=DocumentSimilarityResponse)
+async def document_similarity_recursive(request: DocumentSimilarityRecursiveRequest):
+    """Find the most similar chunk in a document to a keyword using recursive chunking strategy"""
+    validate_model(request.model)
+    
+    # Validate empty inputs
+    if not request.keyword or not request.keyword.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="keyword cannot be empty or whitespace only"
+        )
+    
+    if not request.document or not request.document.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="document cannot be empty or whitespace only"
+        )
+    
+    # Validate that model is sentence_transformers type
+    config = MODEL_CONFIGS[request.model]
+    if config["type"] != "sentence_transformers":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model '{request.model}' must be of type 'sentence_transformers' for document similarity. Available sentence_transformers models: {[k for k, v in MODEL_CONFIGS.items() if v['type'] == 'sentence_transformers']}"
+        )
+    
+    # Validate metric
+    valid_metrics = ["cosine", "euclidean", "manhattan", "chebyshev"]
+    if request.metric not in valid_metrics:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid metric '{request.metric}'. Valid options: {valid_metrics}"
+        )
+    
+    # Validate parameters
+    if request.max_tokens <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="max_tokens must be positive"
+        )
+    
+    if not request.separators or len(request.separators) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="separators list cannot be empty"
+        )
+    
+    start_time = time.time()
+    
+    try:
+        best_chunk, similarity_score, chunk_index, total_chunks, start_offset, end_offset = find_most_similar_chunk_recursive(
+            keyword=request.keyword,
+            document=request.document,
+            model_key=request.model,
+            max_tokens=request.max_tokens,
+            separators=request.separators,
+            metric=request.metric
+        )
+        
+        processing_time = time.time() - start_time
+        logger.info(f"🔍🔄 [{request.model}] Found best recursive chunk ({chunk_index+1}/{total_chunks}) with {request.metric} similarity {similarity_score:.4f} in {processing_time:.3f}s")
+        
+        return DocumentSimilarityResponse(
+            keyword=request.keyword,
+            best_chunk=best_chunk,
+            similarity_score=similarity_score,
+            chunk_index=chunk_index,
+            total_chunks=total_chunks,
+            chunk_start_offset=start_offset,
+            chunk_end_offset=end_offset,
+            metric=request.metric,
+            model=request.model
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing recursive document similarity: {str(e)}")
+
 @app.get("/api/models", response_model=ModelListResponse)
 async def list_models():
     """List available models"""
@@ -409,6 +944,8 @@ async def root():
             "batch_embed": "/api/embed",
             "similarity": "/api/similarity",
             "batch_similarity": "/api/similarity/batch",
+            "document_similarity": "/api/document-similarity",
+            "document_similarity_recursive": "/api/document-similarity-recursive",
             "list_models": "/api/models",
             "health": "/health",
             "docs": "/docs"
