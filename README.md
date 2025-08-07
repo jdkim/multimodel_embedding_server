@@ -4,8 +4,9 @@ A web embedding server that provides text embeddings with similarity calculation
 
 ## 🚀 Features
 
-- **Multiple Models**: PubMedBERT, BlueBERT for biomedical text and Multilingual-E5-Large for general/multilingual text
+- **Multiple Models**: PubMedBERT and BiomedBERT for biomedical text analysis
 - **Ollama-Compatible API**: Drop-in replacement for Ollama embedding endpoints
+- **Document Similarity**: Advanced document chunking and similarity search capabilities
 - **Similarity Calculations**: Built-in cosine, euclidean, manhattan, and chebyshev distance metrics
 - **High Performance**: FastAPI with async support and concurrent request handling
 - **Batch Processing**: Efficient batch embedding generation and similarity matrices
@@ -16,8 +17,7 @@ A web embedding server that provides text embeddings with similarity calculation
 | Model | Key | Use Case | Embedding Dimension |
 |-------|-----|----------|-------------------|
 | PubMedBERT | `pubmedbert` | Biomedical text, scientific papers (optimized for embeddings) | 768 |
-| BlueBERT | `bluebert` | Clinical notes, biomedical text (PubMed + MIMIC-III) | 768 |
-| Multilingual-E5-Large | `multilingual-e5-large` | General text, multilingual content | 1024 |
+| BiomedBERT | `biomedbert` | Biomedical abstracts and full-text articles | 768 |
 
 ## 🛠️ Installation
 
@@ -108,15 +108,10 @@ curl -X POST "http://localhost:11435/api/embeddings" \
   -H "Content-Type: application/json" \
   -d '{"prompt": "myocardial infarction", "model": "pubmedbert"}'
 
-# Get embedding with BlueBERT for clinical text
+# Get embedding with BiomedBERT for biomedical text
 curl -X POST "http://localhost:11435/api/embeddings" \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "patient presents with chest pain", "model": "bluebert"}'
-
-# Get embedding for multilingual text
-curl -X POST "http://localhost:11435/api/embeddings" \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello world", "model": "multilingual-e5-large"}'
+  -d '{"prompt": "patient presents with chest pain", "model": "biomedbert"}'
 
 # Calculate similarity between terms
 curl -X POST "http://localhost:11435/api/similarity" \
@@ -154,7 +149,7 @@ Get embeddings for multiple texts
 ```json
 {
   "input": ["text 1", "text 2", "text 3"],
-  "model": "multilingual-e5-large"
+  "model": "pubmedbert"
 }
 ```
 
@@ -201,7 +196,7 @@ Calculate similarity matrix for multiple texts
 ```json
 {
   "texts": ["diabetes", "hypertension", "heart attack", "stroke"],
-  "model": "bluebert",
+  "model": "biomedbert",
   "metric": "cosine"
 }
 ```
@@ -222,8 +217,70 @@ Calculate similarity matrix for multiple texts
     [0.62, 0.45, 0.38, 0.0]
   ],
   "metric": "cosine",
-  "model": "bluebert",
+  "model": "biomedbert",
   "texts": ["diabetes", "hypertension", "heart attack", "stroke"]
+}
+```
+
+### Document Similarity Endpoints
+
+#### `POST /api/document-similarity`
+Find the most similar chunk in a document to a keyword using sliding window chunking
+
+**Request:**
+```json
+{
+  "keyword": "myocardial infarction",
+  "document": "Long document text here...",
+  "model": "pubmedbert",
+  "chunk_size_tokens": 512,
+  "overlap_percent": 50,
+  "metric": "cosine"
+}
+```
+
+**Response:**
+```json
+{
+  "keyword": "myocardial infarction",
+  "best_chunk": "The chunk of text most similar to the keyword...",
+  "similarity_score": 0.8765,
+  "chunk_index": 3,
+  "total_chunks": 12,
+  "chunk_start_offset": 1024,
+  "chunk_end_offset": 1536,
+  "metric": "cosine",
+  "model": "pubmedbert"
+}
+```
+
+#### `POST /api/document-similarity-recursive`
+Find the most similar chunk using recursive hierarchical text splitting
+
+**Request:**
+```json
+{
+  "keyword": "diabetes",
+  "document": "Long document text here...",
+  "model": "pubmedbert",
+  "max_tokens": 100,
+  "separators": ["\n\n", "\n", ". ", " "],
+  "metric": "cosine"
+}
+```
+
+**Response:**
+```json
+{
+  "keyword": "diabetes",
+  "best_chunk": "The chunk of text most similar to the keyword...",
+  "similarity_score": 0.9123,
+  "chunk_index": 2,
+  "total_chunks": 8,
+  "chunk_start_offset": 512,
+  "chunk_end_offset": 768,
+  "metric": "cosine",
+  "model": "pubmedbert"
 }
 ```
 
@@ -246,6 +303,23 @@ Interactive API documentation (Swagger UI)
 | **euclidean** | Euclidean distance | Geometric similarity | 0-∞ (0=identical) |
 | **manhattan** | Manhattan/L1 distance | Robust to outliers | 0-∞ (0=identical) |
 | **chebyshev** | Chebyshev/L∞ distance | Maximum difference | 0-∞ (0=identical) |
+
+## 📄 Document Chunking Strategies
+
+The server supports two intelligent text chunking strategies for document similarity:
+
+### Sliding Window Chunking
+- **Token-based**: Chunks based on actual model tokens
+- **Overlap**: Configurable percentage overlap between chunks
+- **Best for**: Consistent chunk sizes, dense document analysis
+- **Use case**: Research papers, continuous text analysis
+
+### Recursive Hierarchical Chunking
+- **Structure-aware**: Respects document structure (paragraphs, sentences, etc.)
+- **Adaptive**: Only splits when necessary based on token limits
+- **Hierarchical separators**: `["\n\n", "\n", ". ", " "]` (customizable)
+- **Best for**: Maintaining semantic boundaries, structured documents
+- **Use case**: Medical reports, structured documents with clear sections
 
 ## 💡 Usage Examples
 
@@ -277,15 +351,15 @@ print(f"Similarity: {similarity:.3f}")
 
 # Compare across models
 pubmedbert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "pubmedbert")
-bluebert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "bluebert")
-print(f"PubMedBERT: {pubmedbert_sim:.3f}, BlueBERT: {bluebert_sim:.3f}")
+biomedbert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "biomedbert")
+print(f"PubMedBERT: {pubmedbert_sim:.3f}, BiomedBERT: {biomedbert_sim:.3f}")
 ```
 
 ### Clinical Text Analysis
 
 ```python
 def analyze_clinical_similarity():
-    """Analyze similarity between clinical terms using BlueBERT"""
+    """Analyze similarity between clinical terms using BiomedBERT"""
 
     clinical_terms = [
         "patient presents with chest pain",
@@ -299,7 +373,7 @@ def analyze_clinical_similarity():
         "http://localhost:11435/api/similarity/batch",
         json={
             "texts": clinical_terms,
-            "model": "bluebert",
+            "model": "biomedbert",
             "metric": "cosine"
         }
     )
@@ -317,50 +391,62 @@ def analyze_clinical_similarity():
 analyze_clinical_similarity()
 ```
 
-### Multilingual Text Processing
+### Document Similarity Analysis
 
 ```python
-def process_multilingual_text():
-    """Process multilingual text with E5-Large model"""
-
-    texts = [
-        "Hello, how are you?",          # English
-        "Hola, ¿cómo estás?",          # Spanish  
-        "Bonjour, comment ça va?",      # French
-        "こんにちは、元気ですか？"        # Japanese
-        "안녕하세요. 어떻게 지내세요?"        # Korean
-        "你好，你好吗？",               # Chinese
-    ]
-
+def analyze_document_similarity():
+    """Find most relevant sections in biomedical documents"""
+    
+    # Sample biomedical document
+    document = """
+    Diabetes mellitus is a group of metabolic disorders characterized by a high blood sugar level over a prolonged period of time.
+    Symptoms often include frequent urination, increased thirst and increased appetite. If left untreated, diabetes can cause many health complications.
+    
+    Type 1 diabetes results from failure of the pancreas to produce enough insulin due to loss of beta cells.
+    This form was previously referred to as "insulin-dependent diabetes mellitus" or "juvenile diabetes".
+    The loss of beta cells is caused by an autoimmune response.
+    
+    Type 2 diabetes begins with insulin resistance, a condition in which cells fail to respond to insulin properly.
+    As the disease progresses, a lack of insulin may also develop. This form was previously referred to as "non-insulin-dependent diabetes mellitus".
+    The most common cause is a combination of excessive body weight and insufficient exercise.
+    """
+    
+    # Find most similar chunk to a keyword using sliding window
     response = requests.post(
-        "http://localhost:11435/api/embed",
+        "http://localhost:11435/api/document-similarity",
         json={
-            "input": texts,
-            "model": "multilingual-e5-large"
-        }
-    )
-
-    embeddings = response.json()["embeddings"]
-
-    # Calculate cross-lingual similarities
-    response = requests.post(
-        "http://localhost:11435/api/similarity/batch",
-        json={
-            "texts": texts,
-            "model": "multilingual-e5-large",
+            "keyword": "insulin resistance",
+            "document": document,
+            "model": "biomedbert",
+            "chunk_size_tokens": 50,
+            "overlap_percent": 25,
             "metric": "cosine"
         }
     )
+    
+    result = response.json()
+    print(f"Best matching chunk (score: {result['similarity_score']:.3f}):")
+    print(f"'{result['best_chunk']}'")
+    print(f"Location: characters {result['chunk_start_offset']}-{result['chunk_end_offset']}")
+    
+    # Compare with recursive chunking strategy
+    response = requests.post(
+        "http://localhost:11435/api/document-similarity-recursive",
+        json={
+            "keyword": "autoimmune response",
+            "document": document,
+            "model": "pubmedbert",
+            "max_tokens": 30,
+            "separators": ["\n\n", "\n", ". "],
+            "metric": "cosine"
+        }
+    )
+    
+    result = response.json()
+    print(f"\nRecursive chunking result (score: {result['similarity_score']:.3f}):")
+    print(f"'{result['best_chunk']}'")
 
-    similarity_matrix = response.json()["similarity_matrix"]
-
-    print("Cross-lingual similarities:")
-    for i in range(len(texts)):
-        for j in range(i+1, len(texts)):
-            sim = similarity_matrix[i][j]
-            print(f"{texts[i][:20]} ↔ {texts[j][:20]}: {sim:.3f}")
-
-process_multilingual_text()
+analyze_document_similarity()
 ```
 
 ### Medical Literature Search
@@ -485,8 +571,7 @@ MODEL_CONFIGS = {
 | Model | Single Embedding | Batch (32 texts) | Memory Usage |
 |-------|------------------|-------------------|---------------|
 | PubMedBERT | ~50ms | ~1.5s | ~1.2GB |
-| BlueBERT | ~50ms | ~1.5s | ~1.2GB |
-| Multilingual-E5-Large | ~80ms | ~2.5s | ~2.1GB |
+| BiomedBERT | ~50ms | ~1.5s | ~1.2GB |
 
 ### Batch Processing Guidelines
 
@@ -500,7 +585,8 @@ MODEL_CONFIGS = {
 
 - Use batch processing (`/api/embed`) for multiple texts - much more efficient than individual calls
 - Use `/api/similarity/batch` for similarity matrices instead of individual comparisons
-- Choose the right model: PubMedBERT for research papers, BlueBERT for clinical notes, E5-Large for multilingual
+- Choose the right model: PubMedBERT for optimized embeddings, BiomedBERT for biomedical abstracts and full-text
+- Use document similarity endpoints for finding relevant sections in long texts
 - Run on GPU for 3-5x better performance
 - Use single worker mode when using GPU to avoid memory conflicts
 - Consider model quantization for production deployments with memory constraints
@@ -531,6 +617,11 @@ def process_large_list(texts, model="pubmedbert", chunk_size=32):
 curl http://localhost:11435/api/models
 
 # Check server logs for download progress
+
+# Test document similarity
+curl -X POST "http://localhost:11435/api/document-similarity" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "diabetes", "document": "Long medical text...", "model": "pubmedbert"}'
 ```
 
 **CUDA out of memory:**
@@ -551,8 +642,8 @@ curl -X POST "http://localhost:11435/api/similarity/batch" \
 ```
 
 **Model loading timeout:**
-- Models download on first run (5-15 minutes total for all 3 models)
-- Increase `TimeoutStartSec=900` in systemd service for slower connections
+- Models download on first run (3-8 minutes total for both models)
+- Increase `TimeoutStartSec=600` in systemd service for slower connections
 - Check `/health` endpoint to monitor loading progress
 
 ### Logs
@@ -562,13 +653,12 @@ The server provides detailed logging:
 🚀 Starting Multi-Model Embedding Server...
 🔄 Loading pubmedbert (NeuML/pubmedbert-base-embeddings)...
 ✅ pubmedbert loaded in 45.32s
-🔄 Loading bluebert (bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12)...
-✅ bluebert loaded in 38.45s (109,482,240 parameters)
-🔄 Loading multilingual-e5-large (intfloat/multilingual-e5-large)...
-✅ multilingual-e5-large loaded in 52.18s
+🔄 Loading biomedbert (microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext)...
+✅ biomedbert loaded in 38.45s (109,482,240 parameters)
 🎉 All models loaded successfully!
 📝 [pubmedbert] Embedded text (len=19) in 0.043s
-🔍 [bluebert] Calculated cosine similarity in 0.089s: 0.8234
+🔍 [biomedbert] Calculated cosine similarity in 0.089s: 0.8234
+🔍 [pubmedbert] Found best chunk (3/12) with cosine similarity 0.8765 in 0.156s
 ```
 
 ## 🤝 Contributing
@@ -586,8 +676,7 @@ MIT License - see LICENSE file for details
 ## 🙏 Acknowledgments
 
 - [PubMedBERT](https://huggingface.co/NeuML/pubmedbert-base-embeddings) by NeuML for biomedical embeddings
-- [BlueBERT](https://huggingface.co/bionlp/bluebert_pubmed_mimic_uncased_L-12_H-768_A-12) by NCBI for biomedical + clinical text
-- [Multilingual-E5-Large](https://huggingface.co/intfloat/multilingual-e5-large) by Beijing Academy of Artificial Intelligence
+- [BiomedBERT](https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext) by Microsoft for biomedical text analysis
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
 - [Sentence Transformers](https://www.sbert.net/) for embedding utilities
 - [scikit-learn](https://scikit-learn.org/) for similarity metrics
