@@ -1,0 +1,31 @@
+[Unit]
+Description=MultiModel Embedding Server
+After=network.target
+
+[Service]
+Type=simple
+User=jdkim
+Group=jdkim
+WorkingDirectory=/home/jdkim/dev/multimodel_embedding_server
+Environment=CUDA_VISIBLE_DEVICES=0
+Environment=HF_HOME=/home/jdkim/.cache/huggingface
+TimeoutStartSec=900
+TimeoutStopSec=30
+ExecStart=/home/jdkim/dev/multimodel_embedding_server/venv/bin/gunicorn multimodel_embedding_server:app \
+  -w 1 \
+  -k uvicorn.workers.UvicornWorker \
+  -b 0.0.0.0:11435 \
+  --timeout 300 \
+  --keep-alive 60 \
+  --preload \
+  --access-logfile /home/jdkim/dev/multimodel_embedding_server/log/access.log \
+  --error-logfile /home/jdkim/dev/multimodel_embedding_server/log/error.log \
+  --log-level info \
+  --pid /home/jdkim/dev/multimodel_embedding_server/run/multimodel_embedding_server.pid
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
