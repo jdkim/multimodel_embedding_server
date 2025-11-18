@@ -11,6 +11,9 @@ import logging
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from scipy.spatial import distance
+from functools import lru_cache
+from collections import OrderedDict
+import threading
 
 # Configure logging
 logging.basicConfig(
@@ -22,12 +25,63 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Multi-Model Embedding Server",
     description="Local embedding server with BiomedBERT, BlueBERT, and multilingual-e5-large",
-    version="1.1.0"
+    version="1.2.0"
 )
 
 # Global model storage
 models = {}
 tokenizers = {}
+
+# Thread-safe LRU cache for embeddings
+class ThreadSafeLRUCache:
+    """Thread-safe LRU cache for embedding results"""
+    def __init__(self, maxsize=10000):
+        self.cache = OrderedDict()
+        self.maxsize = maxsize
+        self.lock = threading.Lock()
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, key):
+        with self.lock:
+            if key in self.cache:
+                # Move to end (most recently used)
+                self.cache.move_to_end(key)
+                self.hits += 1
+                return self.cache[key]
+            self.misses += 1
+            return None
+
+    def put(self, key, value):
+        with self.lock:
+            if key in self.cache:
+                self.cache.move_to_end(key)
+            else:
+                self.cache[key] = value
+                if len(self.cache) > self.maxsize:
+                    # Remove least recently used
+                    self.cache.popitem(last=False)
+
+    def stats(self):
+        with self.lock:
+            total = self.hits + self.misses
+            hit_rate = (self.hits / total * 100) if total > 0 else 0
+            return {
+                "size": len(self.cache),
+                "maxsize": self.maxsize,
+                "hits": self.hits,
+                "misses": self.misses,
+                "hit_rate": f"{hit_rate:.2f}%"
+            }
+
+    def clear(self):
+        with self.lock:
+            self.cache.clear()
+            self.hits = 0
+            self.misses = 0
+
+# Global embedding cache (model_key -> cache)
+embedding_caches = {}
 
 # Model configurations
 MODEL_CONFIGS = {
@@ -148,6 +202,9 @@ async def load_models():
 
     tasks = []
     for model_key, config in MODEL_CONFIGS.items():
+        # Initialize cache for each model
+        embedding_caches[model_key] = ThreadSafeLRUCache(maxsize=10000)
+
         if config["type"] == "transformers":
             task = load_transformers_model(model_key, config["name"])
         elif config["type"] == "sentence_transformers":
@@ -157,6 +214,7 @@ async def load_models():
     # Load models concurrently
     await asyncio.gather(*tasks)
     logger.info("🎉 All models loaded successfully!")
+    logger.info("📦 Embedding caches initialized with 10,000 entry capacity per model")
 
 def get_embedding_transformers(text: str, model_key: str) -> List[float]:
     """Get embedding using transformers model"""
@@ -653,20 +711,53 @@ async def embeddings(request: EmbeddingRequest):
 
 @app.post("/api/embed", response_model=EmbedResponse)
 async def embed(request: EmbedRequest):
-    """Get batch embeddings"""
+    """Get batch embeddings with caching"""
     validate_model(request.model)
 
     start_time = time.time()
     texts = request.input if isinstance(request.input, list) else [request.input]
     config = MODEL_CONFIGS[request.model]
-    
-    if config["type"] == "transformers":
-        embeddings = get_embeddings_batch_transformers(texts, request.model)
-    else:  # sentence_transformers
-        embeddings = get_embeddings_batch_sentence_transformers(texts, request.model)
+    cache = embedding_caches[request.model]
+
+    # Check cache for each text
+    embeddings = []
+    uncached_texts = []
+    uncached_indices = []
+
+    for i, text in enumerate(texts):
+        cached_embedding = cache.get(text)
+        if cached_embedding is not None:
+            embeddings.append(cached_embedding)
+        else:
+            embeddings.append(None)  # Placeholder
+            uncached_texts.append(text)
+            uncached_indices.append(i)
+
+    # Compute embeddings only for uncached texts
+    if uncached_texts:
+        if config["type"] == "transformers":
+            new_embeddings = get_embeddings_batch_transformers(uncached_texts, request.model)
+        else:  # sentence_transformers
+            new_embeddings = get_embeddings_batch_sentence_transformers(uncached_texts, request.model)
+
+        # Store in cache and update results
+        # Use double-check locking to avoid race conditions
+        for idx, text_idx in enumerate(uncached_indices):
+            text = uncached_texts[idx]
+            # Check cache again in case another thread computed it while we were computing
+            cached = cache.get(text)
+            if cached is not None:
+                # Another thread beat us to it, use their result
+                embeddings[text_idx] = cached
+            else:
+                # We're first, store our computed result
+                embedding = new_embeddings[idx]
+                cache.put(text, embedding)
+                embeddings[text_idx] = embedding
 
     processing_time = time.time() - start_time
-    logger.info(f"📊 [{request.model}] Embedded {len(texts)} texts in {processing_time:.3f}s")
+    cache_hits = len(texts) - len(uncached_texts)
+    logger.info(f"📊 [{request.model}] Embedded {len(texts)} texts ({cache_hits} cached, {len(uncached_texts)} computed) in {processing_time:.3f}s")
 
     return EmbedResponse(embeddings=embeddings)
 
@@ -926,27 +1017,51 @@ async def list_models():
 async def health():
     """Health check"""
     loaded_models = {k: k in models for k in MODEL_CONFIGS.keys()}
+    cache_stats = {k: embedding_caches[k].stats() for k in embedding_caches.keys()}
     return {
         "status": "healthy",
         "models": loaded_models,
         "total_models": len(MODEL_CONFIGS),
-        "loaded_count": sum(loaded_models.values())
+        "loaded_count": sum(loaded_models.values()),
+        "cache_stats": cache_stats
     }
+
+@app.get("/api/cache/stats")
+async def cache_stats():
+    """Get cache statistics for all models"""
+    return {model_key: cache.stats() for model_key, cache in embedding_caches.items()}
+
+@app.post("/api/cache/clear")
+async def clear_cache(model: str = None):
+    """Clear embedding cache for specific model or all models"""
+    if model:
+        if model not in embedding_caches:
+            raise HTTPException(status_code=404, detail=f"Model '{model}' not found")
+        embedding_caches[model].clear()
+        return {"message": f"Cache cleared for model '{model}'"}
+    else:
+        for cache in embedding_caches.values():
+            cache.clear()
+        return {"message": "All caches cleared"}
 
 @app.get("/")
 async def root():
     """Root endpoint with info"""
     return {
         "message": "Multi-Model Embedding Server",
+        "version": "1.2.0",
+        "features": ["Server-side LRU caching", "Batch embeddings", "Multiple similarity metrics"],
         "available_models": list(MODEL_CONFIGS.keys()),
         "endpoints": {
             "embeddings": "/api/embeddings",
-            "batch_embed": "/api/embed",
+            "batch_embed": "/api/embed (with caching)",
             "similarity": "/api/similarity",
             "batch_similarity": "/api/similarity/batch",
             "document_similarity": "/api/document-similarity",
             "document_similarity_recursive": "/api/document-similarity-recursive",
             "list_models": "/api/models",
+            "cache_stats": "/api/cache/stats",
+            "clear_cache": "/api/cache/clear",
             "health": "/health",
             "docs": "/docs"
         },
