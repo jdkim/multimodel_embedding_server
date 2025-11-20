@@ -11,6 +11,7 @@ import logging
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from scipy.spatial import distance
+from scipy.spatial.distance import cityblock as manhattan, chebyshev
 from functools import lru_cache
 from collections import OrderedDict
 import threading
