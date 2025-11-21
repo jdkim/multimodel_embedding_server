@@ -15,6 +15,14 @@ from scipy.spatial.distance import cityblock as manhattan, chebyshev
 from functools import lru_cache
 from collections import OrderedDict
 import threading
+import os
+import argparse
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description='Multi-Model Embedding Server')
+parser.add_argument('--cache-size', type=int, default=10000,
+                    help='Cache size per model (default: 10000)')
+args, unknown = parser.parse_known_args()
 
 # Configure logging
 logging.basicConfig(
@@ -22,6 +30,10 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Configuration: Cache size from command-line argument
+CACHE_SIZE = args.cache_size
+logger.info(f"📦 Cache size configured: {CACHE_SIZE:,} entries per model")
 
 app = FastAPI(
     title="Multi-Model Embedding Server",
@@ -204,7 +216,7 @@ async def load_models():
     tasks = []
     for model_key, config in MODEL_CONFIGS.items():
         # Initialize cache for each model
-        embedding_caches[model_key] = ThreadSafeLRUCache(maxsize=10000)
+        embedding_caches[model_key] = ThreadSafeLRUCache(maxsize=CACHE_SIZE)
 
         if config["type"] == "transformers":
             task = load_transformers_model(model_key, config["name"])
@@ -215,7 +227,7 @@ async def load_models():
     # Load models concurrently
     await asyncio.gather(*tasks)
     logger.info("🎉 All models loaded successfully!")
-    logger.info("📦 Embedding caches initialized with 10,000 entry capacity per model")
+    logger.info(f"📦 Embedding caches initialized with {CACHE_SIZE:,} entry capacity per model")
 
 def get_embedding_transformers(text: str, model_key: str) -> List[float]:
     """Get embedding using transformers model"""

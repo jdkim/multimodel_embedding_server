@@ -12,7 +12,7 @@ Environment=HF_HOME=/home/jdkim/.cache/huggingface
 TimeoutStartSec=900
 TimeoutStopSec=30
 ExecStart=/home/jdkim/dev/multimodel_embedding_server/venv/bin/gunicorn multimodel_embedding_server:app \
-  -w 1 \
+  -w 2 \
   -k uvicorn.workers.UvicornWorker \
   -b 0.0.0.0:11435 \
   --timeout 300 \
@@ -22,6 +22,7 @@ ExecStart=/home/jdkim/dev/multimodel_embedding_server/venv/bin/gunicorn multimod
   --error-logfile /home/jdkim/dev/multimodel_embedding_server/log/error.log \
   --log-level info \
   --pid /home/jdkim/dev/multimodel_embedding_server/run/multimodel_embedding_server.pid
+  -- --cache-size 20000
 ExecReload=/bin/kill -HUP $MAINPID
 ExecStop=/bin/kill -TERM $MAINPID
 Restart=always
