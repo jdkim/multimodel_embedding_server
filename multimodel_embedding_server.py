@@ -19,6 +19,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Device detection for GPU support
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+logger.info(f"🖥️ Using device: {device}" + (f" ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else ""))
+
 app = FastAPI(
     title="Multi-Model Embedding Server",
     description="Local embedding server with BiomedBERT and PubMedBERT",
@@ -122,13 +126,14 @@ async def load_transformers_model(model_key: str, model_name: str):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModel.from_pretrained(model_name)
     model.eval()
+    model.to(device)
 
     tokenizers[model_key] = tokenizer
     models[model_key] = model
 
     load_time = time.time() - start_time
     param_count = sum(p.numel() for p in model.parameters())
-    logger.info(f"✅ {model_key} loaded in {load_time:.2f}s ({param_count:,} parameters)")
+    logger.info(f"✅ {model_key} loaded in {load_time:.2f}s ({param_count:,} parameters) on {device}")
 
 async def load_sentence_transformers_model(model_key: str, model_name: str):
     """Load a sentence-transformers model"""
@@ -164,11 +169,12 @@ def get_embedding_transformers(text: str, model_key: str) -> List[float]:
     model = models[model_key]
 
     inputs = tokenizer(text, return_tensors='pt', truncation=True, max_length=512)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
         outputs = model(**inputs)
         # Use [CLS] token embedding
-        embedding = outputs.last_hidden_state[0, 0, :].numpy().tolist()
+        embedding = outputs.last_hidden_state[0, 0, :].cpu().numpy().tolist()
 
     return embedding
 
@@ -178,16 +184,17 @@ def get_embeddings_batch_transformers(texts: List[str], model_key: str) -> List[
     model = models[model_key]
 
     inputs = tokenizer(
-        texts, 
-        padding=True, 
-        truncation=True, 
-        return_tensors='pt', 
+        texts,
+        padding=True,
+        truncation=True,
+        return_tensors='pt',
         max_length=512
     )
+    inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
         outputs = model(**inputs)
-        embeddings = outputs.last_hidden_state[:, 0, :].numpy().tolist()
+        embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy().tolist()
 
     return embeddings
 
@@ -926,11 +933,19 @@ async def list_models():
 async def health():
     """Health check"""
     loaded_models = {k: k in models for k in MODEL_CONFIGS.keys()}
+    device_info = {
+        "type": str(device),
+        "cuda_available": torch.cuda.is_available(),
+    }
+    if torch.cuda.is_available():
+        device_info["gpu_name"] = torch.cuda.get_device_name(0)
+        device_info["gpu_memory_total"] = f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB"
     return {
         "status": "healthy",
         "models": loaded_models,
         "total_models": len(MODEL_CONFIGS),
-        "loaded_count": sum(loaded_models.values())
+        "loaded_count": sum(loaded_models.values()),
+        "device": device_info
     }
 
 @app.get("/")
