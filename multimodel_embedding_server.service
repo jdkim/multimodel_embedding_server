@@ -17,7 +17,6 @@ ExecStart=/home/jdkim/dev/multimodel_embedding_server/venv/bin/gunicorn multimod
   -b 0.0.0.0:11435 \
   --timeout 300 \
   --keep-alive 60 \
-  --preload \
   --access-logfile /home/jdkim/dev/multimodel_embedding_server/log/access.log \
   --error-logfile /home/jdkim/dev/multimodel_embedding_server/log/error.log \
   --log-level info \
