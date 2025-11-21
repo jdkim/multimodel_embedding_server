@@ -2,14 +2,11 @@ import pytest
 from starlette.testclient import TestClient
 from unittest.mock import Mock, patch, MagicMock
 import numpy as np
-from collections import OrderedDict
-import threading
 import time
 from scipy.spatial.distance import cityblock, chebyshev
 
 from multimodel_embedding_server import (
     app,
-    ThreadSafeLRUCache,
     calculate_similarity_and_distance,
     calculate_similarity_matrix,
     chunk_document_with_sliding_window_tokens,
@@ -19,7 +16,6 @@ from multimodel_embedding_server import (
     MODEL_CONFIGS,
     models,
     tokenizers,
-    embedding_caches,
 )
 
 # Test client - created per test to avoid startup issues
@@ -28,124 +24,6 @@ def test_client():
     """Create test client for FastAPI app"""
     client = TestClient(app, raise_server_exceptions=False)
     yield client
-
-
-# ============================================================================
-# ThreadSafeLRUCache Tests
-# ============================================================================
-
-class TestThreadSafeLRUCache:
-    """Tests for the ThreadSafeLRUCache class"""
-
-    def test_cache_initialization(self):
-        """Test cache initializes with correct parameters"""
-        cache = ThreadSafeLRUCache(maxsize=100)
-        assert cache.maxsize == 100
-        assert cache.hits == 0
-        assert cache.misses == 0
-        assert len(cache.cache) == 0
-
-    def test_cache_get_miss(self):
-        """Test cache get on missing key returns None and increments misses"""
-        cache = ThreadSafeLRUCache()
-        result = cache.get("nonexistent")
-        assert result is None
-        assert cache.misses == 1
-        assert cache.hits == 0
-
-    def test_cache_put_and_get(self):
-        """Test putting and getting values from cache"""
-        cache = ThreadSafeLRUCache()
-        cache.put("key1", [1.0, 2.0, 3.0])
-        result = cache.get("key1")
-        assert result == [1.0, 2.0, 3.0]
-        assert cache.hits == 1
-        assert cache.misses == 0
-
-    def test_cache_lru_eviction(self):
-        """Test that least recently used items are evicted"""
-        cache = ThreadSafeLRUCache(maxsize=3)
-        cache.put("key1", "value1")
-        cache.put("key2", "value2")
-        cache.put("key3", "value3")
-        cache.put("key4", "value4")  # Should evict key1
-
-        assert cache.get("key1") is None
-        assert cache.get("key2") == "value2"
-        assert cache.get("key3") == "value3"
-        assert cache.get("key4") == "value4"
-
-    def test_cache_move_to_end_on_access(self):
-        """Test that accessing an item moves it to most recently used"""
-        cache = ThreadSafeLRUCache(maxsize=3)
-        cache.put("key1", "value1")
-        cache.put("key2", "value2")
-        cache.put("key3", "value3")
-
-        # Access key1 to make it most recently used
-        cache.get("key1")
-
-        # Add key4, should evict key2 (not key1)
-        cache.put("key4", "value4")
-
-        assert cache.get("key1") == "value1"
-        assert cache.get("key2") is None
-        assert cache.get("key3") == "value3"
-        assert cache.get("key4") == "value4"
-
-    def test_cache_stats(self):
-        """Test cache statistics calculation"""
-        cache = ThreadSafeLRUCache(maxsize=100)
-        cache.put("key1", "value1")
-        cache.put("key2", "value2")
-
-        cache.get("key1")  # hit
-        cache.get("key1")  # hit
-        cache.get("key3")  # miss
-
-        stats = cache.stats()
-        assert stats["size"] == 2
-        assert stats["maxsize"] == 100
-        assert stats["hits"] == 2
-        assert stats["misses"] == 1
-        assert stats["hit_rate"] == "66.67%"
-
-    def test_cache_clear(self):
-        """Test clearing the cache"""
-        cache = ThreadSafeLRUCache()
-        cache.put("key1", "value1")
-        cache.put("key2", "value2")
-        cache.get("key1")
-        cache.get("key3")
-
-        cache.clear()
-
-        assert len(cache.cache) == 0
-        assert cache.hits == 0
-        assert cache.misses == 0
-
-    def test_cache_thread_safety(self):
-        """Test that cache is thread-safe"""
-        cache = ThreadSafeLRUCache(maxsize=1000)
-        errors = []
-
-        def worker(thread_id):
-            try:
-                for i in range(100):
-                    key = f"thread{thread_id}_key{i}"
-                    cache.put(key, f"value{i}")
-                    result = cache.get(key)
-                    assert result == f"value{i}"
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert len(errors) == 0
 
 
 # ============================================================================
@@ -352,77 +230,6 @@ class TestModelValidation:
 
 
 # ============================================================================
-# Configuration Tests
-# ============================================================================
-
-class TestConfiguration:
-    """Tests for configuration and command-line arguments"""
-
-    def test_default_cache_size(self):
-        """Test that CACHE_SIZE defaults to 10000"""
-        import multimodel_embedding_server
-        # The module was already imported with default args
-        # Check that it's either 10000 or was set by command line
-        assert multimodel_embedding_server.CACHE_SIZE >= 1000
-        assert multimodel_embedding_server.CACHE_SIZE <= 1000000
-
-    def test_cache_size_is_used(self):
-        """Test that CACHE_SIZE is applied to cache initialization"""
-        import multimodel_embedding_server
-
-        # Create a new cache with the configured size
-        test_cache = ThreadSafeLRUCache(maxsize=multimodel_embedding_server.CACHE_SIZE)
-        assert test_cache.maxsize == multimodel_embedding_server.CACHE_SIZE
-
-    def test_cache_size_configuration_value(self):
-        """Test that cache size can be configured via command line"""
-        import sys
-        import subprocess
-
-        # Test with different cache sizes
-        test_code = """
-import sys
-sys.argv = ['multimodel_embedding_server.py', '--cache-size', '50000']
-
-# Need to reload module to pick up new args
-import importlib
-import multimodel_embedding_server
-# Force reimport won't work, so just check arg parsing works
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument('--cache-size', type=int, default=10000)
-args = parser.parse_args(['--cache-size', '50000'])
-assert args.cache_size == 50000
-print('PASS')
-"""
-        result = subprocess.run(
-            [sys.executable, '-c', test_code],
-            capture_output=True,
-            text=True
-        )
-        assert 'PASS' in result.stdout
-
-    def test_embedding_caches_use_cache_size(self):
-        """Test that embedding_caches are initialized with CACHE_SIZE"""
-        from multimodel_embedding_server import embedding_caches, CACHE_SIZE
-
-        # Check that existing caches have the right size
-        for model_key, cache in embedding_caches.items():
-            assert cache.maxsize == CACHE_SIZE, f"{model_key} cache has wrong size"
-
-    def test_cache_size_logged_on_startup(self, caplog):
-        """Test that cache size is logged on module import"""
-        # This test verifies the log message exists
-        # The actual logging happens at module import time
-        import multimodel_embedding_server
-
-        # Check the CACHE_SIZE variable exists and is valid
-        assert hasattr(multimodel_embedding_server, 'CACHE_SIZE')
-        assert isinstance(multimodel_embedding_server.CACHE_SIZE, int)
-        assert multimodel_embedding_server.CACHE_SIZE > 0
-
-
-# ============================================================================
 # API Endpoint Tests
 # ============================================================================
 
@@ -435,7 +242,7 @@ class TestAPIEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Multi-Model Embedding Server"
-        assert data["version"] == "1.2.0"
+        assert data["version"] == "1.3.0"
         assert "available_models" in data
         assert "endpoints" in data
 
@@ -462,14 +269,6 @@ class TestAPIEndpoints:
         assert "full_name" in model
         assert "type" in model
         assert "description" in model
-
-    def test_cache_stats_endpoint(self, test_client):
-        """Test cache statistics endpoint"""
-        response = test_client.get("/api/cache/stats")
-        assert response.status_code == 200
-        data = response.json()
-        # Should return stats for each model
-        assert isinstance(data, dict)
 
     @patch('multimodel_embedding_server.models')
     @patch('multimodel_embedding_server.MODEL_CONFIGS')
@@ -612,67 +411,6 @@ class TestAPIEndpoints:
             }
         )
         assert response.status_code == 400
-
-    def test_clear_cache_all(self, test_client):
-        """Test clearing all caches"""
-        response = test_client.post("/api/cache/clear")
-        assert response.status_code == 200
-        data = response.json()
-        assert "All caches cleared" in data["message"]
-
-    def test_clear_cache_specific_model(self, test_client):
-        """Test clearing cache for specific model"""
-        # First ensure cache exists for the model
-        if "pubmedbert" not in embedding_caches:
-            embedding_caches["pubmedbert"] = ThreadSafeLRUCache()
-
-        response = test_client.post("/api/cache/clear?model=pubmedbert")
-        assert response.status_code == 200
-        data = response.json()
-        assert "pubmedbert" in data["message"]
-
-    def test_clear_cache_nonexistent_model(self, test_client):
-        """Test clearing cache for nonexistent model"""
-        response = test_client.post("/api/cache/clear?model=nonexistent")
-        assert response.status_code == 404
-
-
-# ============================================================================
-# Integration Tests
-# ============================================================================
-
-class TestIntegration:
-    """Integration tests for complete workflows"""
-
-    def test_cache_functionality_in_embed_endpoint(self, test_client):
-        """Test that caching works in the embed endpoint"""
-        # This is a mock-based integration test
-        with patch('multimodel_embedding_server.models') as mock_models, \
-             patch('multimodel_embedding_server.get_embeddings_batch_sentence_transformers') as mock_get_embeddings:
-
-            mock_models.__contains__.return_value = True
-            mock_get_embeddings.return_value = [[0.1, 0.2], [0.3, 0.4]]
-
-            # Ensure cache exists
-            if "pubmedbert" not in embedding_caches:
-                embedding_caches["pubmedbert"] = ThreadSafeLRUCache()
-
-            # First request - should compute
-            response1 = test_client.post(
-                "/api/embed",
-                json={"input": ["text1", "text2"], "model": "pubmedbert"}
-            )
-            assert response1.status_code == 200
-
-            # Second request with same texts - should use cache
-            response2 = test_client.post(
-                "/api/embed",
-                json={"input": ["text1", "text2"], "model": "pubmedbert"}
-            )
-            assert response2.status_code == 200
-
-            # Verify embeddings are same
-            assert response1.json()["embeddings"] == response2.json()["embeddings"]
 
 
 if __name__ == "__main__":

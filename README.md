@@ -94,26 +94,18 @@ pip-sync requirements.txt
 
 ### 1. Start the Server
 
-**Basic usage:**
+**Development:**
 ```bash
 uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435
 ```
 
-**With custom cache size:**
+**Production (gunicorn):**
 ```bash
-# Development (uvicorn)
-uvicorn multimodel_embedding_server:app --host 0.0.0.0 --port 11435 -- --cache-size 50000
-
-# Production (gunicorn)
 gunicorn multimodel_embedding_server:app \
   -w 4 \
   -k uvicorn.workers.UvicornWorker \
-  -b 0.0.0.0:11435 \
-  -- --cache-size 50000
+  -b 0.0.0.0:11435
 ```
-
-**Command-line options:**
-- `--cache-size`: Number of embeddings to cache per model (default: 10000)
 
 The server will automatically download and load the models on the first startup (this may take a few minutes).
 
@@ -134,67 +126,6 @@ curl -X POST "http://localhost:11435/api/embeddings" \
 curl -X POST "http://localhost:11435/api/similarity" \
   -H "Content-Type: application/json" \
   -d '{"text1": "myocardial infarction", "text2": "heart attack", "model": "pubmedbert", "metric": "cosine"}'
-```
-
-## ⚙️ Configuration
-
-### Cache Size
-
-The server caches embeddings to improve performance. You can configure the cache size using the `--cache-size` command-line parameter.
-
-**Default**: 10,000 entries per model
-
-**Examples:**
-
-```bash
-# Small cache (light workload)
-gunicorn multimodel_embedding_server:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:11435 -- --cache-size 10000
-
-# Medium cache (moderate workload) - Recommended for most use cases
-gunicorn multimodel_embedding_server:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:11435 -- --cache-size 50000
-
-# Large cache (heavy workload with diverse texts)
-gunicorn multimodel_embedding_server:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:11435 -- --cache-size 100000
-```
-
-**Memory Usage:**
-- 10,000 entries ≈ 30 MB per model
-- 50,000 entries ≈ 150 MB per model
-- 100,000 entries ≈ 300 MB per model
-
-**Monitoring Cache Performance:**
-
-```bash
-# Check cache statistics
-curl -s http://localhost:11435/api/cache/stats | jq
-
-# Watch cache hit rate in real-time
-watch -n 5 'curl -s http://localhost:11435/api/cache/stats | jq ".pubmedbert.hit_rate"'
-```
-
-**Cache Tuning Guidelines:**
-- **Hit rate < 10%**: Increase cache size
-- **Hit rate 20-40%**: Good performance
-- **Hit rate > 50%**: Excellent (cache may be oversized but that's fine)
-- **Cache full (size = maxsize)**: Consider increasing size
-
-### Systemd Service Configuration
-
-To use custom cache size with systemd, edit `multimodel_embedding_server.service`:
-
-```ini
-[Service]
-ExecStart=/path/to/venv/bin/gunicorn multimodel_embedding_server:app \
-  -w 4 \
-  -k uvicorn.workers.UvicornWorker \
-  -b 0.0.0.0:11435 \
-  -- --cache-size 50000
-```
-
-Then reload and restart:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart multimodel_embedding_server
 ```
 
 ## 🔌 API Endpoints
