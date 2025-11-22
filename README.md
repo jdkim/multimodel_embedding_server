@@ -4,7 +4,7 @@ A web embedding server that provides text embeddings with similarity calculation
 
 ## 🚀 Features
 
-- **Multiple Models**: PubMedBERT and BiomedBERT for biomedical text analysis
+- **Multiple Models**: PubMedBERT, SapBERT, BioLORD, and BiomedBERT for biomedical text analysis
 - **Ollama-Compatible API**: Drop-in replacement for Ollama embedding endpoints
 - **Document Similarity**: Advanced document chunking and similarity search capabilities
 - **Similarity Calculations**: Built-in cosine, euclidean, manhattan, and chebyshev distance metrics
@@ -14,10 +14,14 @@ A web embedding server that provides text embeddings with similarity calculation
 
 ## 📋 Currently Supported Models
 
-| Model | Key | Use Case | Embedding Dimension |
-|-------|-----|----------|-------------------|
-| PubMedBERT | `pubmedbert` | Biomedical text, scientific papers (optimized for embeddings) | 768 |
-| BiomedBERT | `biomedbert` | Biomedical abstracts and full-text articles | 768 |
+| Model | Key | Type | Use Case | Embedding Dimension |
+|-------|-----|------|----------|-------------------|
+| PubMedBERT | `pubmedbert` | sentence_transformers | Biomedical text, scientific papers (optimized for embeddings) | 768 |
+| SapBERT | `sapbert` | sentence_transformers | Biomedical entity linking and concept normalization | 768 |
+| BioLORD | `biolord` | sentence_transformers | Biomedical semantic similarity and entity linking | 768 |
+| BiomedBERT | `biomedbert` | transformers | Biomedical abstracts and full-text articles | 768 |
+
+**Note:** Models with `sentence_transformers` type support all endpoints including document similarity. The `transformers` type model (biomedbert) works for embeddings and pairwise similarity but not document similarity endpoints.
 
 ## 🛠️ Installation
 
@@ -360,8 +364,9 @@ print(f"Similarity: {similarity:.3f}")
 
 # Compare across models
 pubmedbert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "pubmedbert")
-biomedbert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "biomedbert")
-print(f"PubMedBERT: {pubmedbert_sim:.3f}, BiomedBERT: {biomedbert_sim:.3f}")
+sapbert_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "sapbert")
+biolord_sim = compare_biomedical_terms("diabetes", "hyperglycemia", "biolord")
+print(f"PubMedBERT: {pubmedbert_sim:.3f}, SapBERT: {sapbert_sim:.3f}, BioLORD: {biolord_sim:.3f}")
 ```
 
 ### Clinical Text Analysis
@@ -580,6 +585,8 @@ MODEL_CONFIGS = {
 | Model | Single Embedding | Batch (32 texts) | Memory Usage |
 |-------|------------------|-------------------|---------------|
 | PubMedBERT | ~50ms | ~1.5s | ~1.2GB |
+| SapBERT | ~50ms | ~1.5s | ~1.2GB |
+| BioLORD | ~50ms | ~1.5s | ~1.2GB |
 | BiomedBERT | ~50ms | ~1.5s | ~1.2GB |
 
 ### Batch Processing Guidelines
@@ -594,7 +601,7 @@ MODEL_CONFIGS = {
 
 - Use batch processing (`/api/embed`) for multiple texts - much more efficient than individual calls
 - Use `/api/similarity/batch` for similarity matrices instead of individual comparisons
-- Choose the right model: PubMedBERT for optimized embeddings, BiomedBERT for biomedical abstracts and full-text
+- Choose the right model: PubMedBERT for general embeddings, SapBERT for entity linking, BioLORD for semantic similarity, BiomedBERT for abstracts
 - Use document similarity endpoints for finding relevant sections in long texts
 - Run on GPU for 3-5x better performance
 - Use single worker mode when using GPU to avoid memory conflicts
@@ -651,7 +658,7 @@ curl -X POST "http://localhost:11435/api/similarity/batch" \
 ```
 
 **Model loading timeout:**
-- Models download on first run (3-8 minutes total for both models)
+- Models download on first run (may take several minutes for all models)
 - Increase `TimeoutStartSec=600` in systemd service for slower connections
 - Check `/health` endpoint to monitor loading progress
 
@@ -662,12 +669,16 @@ The server provides detailed logging:
 🚀 Starting Multi-Model Embedding Server...
 🔄 Loading pubmedbert (NeuML/pubmedbert-base-embeddings)...
 ✅ pubmedbert loaded in 45.32s
+🔄 Loading sapbert (cambridgeltl/SapBERT-from-PubMedBERT-fulltext)...
+✅ sapbert loaded in 38.45s
+🔄 Loading biolord (FremyCompany/BioLORD-2023)...
+✅ biolord loaded in 40.12s
 🔄 Loading biomedbert (microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext)...
 ✅ biomedbert loaded in 38.45s (109,482,240 parameters)
 🎉 All models loaded successfully!
 📝 [pubmedbert] Embedded text (len=19) in 0.043s
-🔍 [biomedbert] Calculated cosine similarity in 0.089s: 0.8234
-🔍 [pubmedbert] Found best chunk (3/12) with cosine similarity 0.8765 in 0.156s
+🔍 [sapbert] Calculated cosine similarity in 0.089s: 0.8234
+🔍 [biolord] Found best chunk (3/12) with cosine similarity 0.8765 in 0.156s
 ```
 
 ## 🤝 Contributing
@@ -685,6 +696,8 @@ MIT License - see LICENSE file for details
 ## 🙏 Acknowledgments
 
 - [PubMedBERT](https://huggingface.co/NeuML/pubmedbert-base-embeddings) by NeuML for biomedical embeddings
+- [SapBERT](https://huggingface.co/cambridgeltl/SapBERT-from-PubMedBERT-fulltext) by Cambridge LTL for biomedical entity linking
+- [BioLORD](https://huggingface.co/FremyCompany/BioLORD-2023) by FremyCompany for biomedical semantic similarity
 - [BiomedBERT](https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext) by Microsoft for biomedical text analysis
 - [FastAPI](https://fastapi.tiangolo.com/) for the excellent web framework
 - [Sentence Transformers](https://www.sbert.net/) for embedding utilities
