@@ -40,6 +40,16 @@ MODEL_CONFIGS = {
         "type": "sentence_transformers",
         "description": "PubMed BERT optimized for embeddings and similarity search"
     },
+    "sapbert": {
+        "name": "cambridgeltl/SapBERT-from-PubMedBERT-fulltext",
+        "type": "sentence_transformers",
+        "description": "Self-alignment pretrained BERT for biomedical entity linking"
+    },
+    "biolord": {
+        "name": "FremyCompany/BioLORD-2023",
+        "type": "sentence_transformers",
+        "description": "BioLORD-2023 for biomedical semantic similarity and entity linking"
+    },
     "biomedbert": {
         "name": "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext",
         "type": "transformers",
