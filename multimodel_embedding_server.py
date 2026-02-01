@@ -39,21 +39,21 @@ MODEL_CONFIGS = {
         "name": "NeuML/pubmedbert-base-embeddings",
         "type": "sentence_transformers",
         "description": "PubMed BERT optimized for embeddings and similarity search"
-    },
-    "sapbert": {
-        "name": "cambridgeltl/SapBERT-from-PubMedBERT-fulltext",
-        "type": "sentence_transformers",
-        "description": "Self-alignment pretrained BERT for biomedical entity linking"
-    },
-    "biolord": {
-        "name": "FremyCompany/BioLORD-2023",
-        "type": "sentence_transformers",
-        "description": "BioLORD-2023 for biomedical semantic similarity and entity linking"
-    },
-    "biomedbert": {
-        "name": "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext",
-        "type": "transformers",
-        "description": "Microsoft BiomedBERT trained on biomedical abstracts and full-text"
+    # },
+    # "sapbert": {
+    #     "name": "cambridgeltl/SapBERT-from-PubMedBERT-fulltext",
+    #     "type": "sentence_transformers",
+    #     "description": "Self-alignment pretrained BERT for biomedical entity linking"
+    # },
+    # "biolord": {
+    #     "name": "FremyCompany/BioLORD-2023",
+    #     "type": "sentence_transformers",
+    #     "description": "BioLORD-2023 for biomedical semantic similarity and entity linking"
+    # },
+    # "biomedbert": {
+    #     "name": "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext",
+    #     "type": "transformers",
+    #     "description": "Microsoft BiomedBERT trained on biomedical abstracts and full-text"
     }
 }
 
@@ -127,6 +127,49 @@ class DocumentSimilarityRecursiveRequest(BaseModel):
     max_tokens: int = 100
     separators: List[str] = ["\n\n", "\n", ". ", " "]
     metric: str = "cosine"
+
+class Span(BaseModel):
+    begin: int
+    end: int
+
+class SpanEmbeddingsRequest(BaseModel):
+    text: str
+    spans: List[Span]
+    model: str = "pubmedbert"
+
+class SpanEmbeddingResult(BaseModel):
+    begin: int
+    end: int
+    span_text: str
+    embedding: List[float]
+    tokens: List[str]
+
+class SpanEmbeddingsResponse(BaseModel):
+    text: str
+    spans: List[SpanEmbeddingResult]
+    model: str
+
+class SpanSimilarityRequest(BaseModel):
+    text: str
+    spans: List[Span]
+    query: str
+    model: str = "pubmedbert"
+    metric: str = "cosine"
+
+class SpanSimilarityResult(BaseModel):
+    begin: int
+    end: int
+    span_text: str
+    similarity: float
+    distance: float
+    tokens: List[str]
+
+class SpanSimilarityResponse(BaseModel):
+    text: str
+    query: str
+    spans: List[SpanSimilarityResult]
+    model: str
+    metric: str
 
 async def load_transformers_model(model_key: str, model_name: str):
     """Load a transformers model"""
@@ -219,6 +262,83 @@ def get_embeddings_batch_sentence_transformers(texts: List[str], model_key: str)
     model = models[model_key]
     embeddings = model.encode(texts).tolist()
     return embeddings
+
+def get_span_embeddings(text: str, spans: List[dict], model_key: str) -> List[dict]:
+    """
+    Get contextualized embeddings for specific spans within a text.
+
+    Args:
+        text: The full text for context
+        spans: List of dicts with 'begin' and 'end' keys (caret positions)
+        model_key: The model to use
+
+    Returns:
+        List of dicts with span_text, embedding, tokens for each span
+    """
+    config = MODEL_CONFIGS[model_key]
+
+    if config["type"] == "sentence_transformers":
+        model = models[model_key]
+        # Access underlying tokenizer and transformer model
+        tokenizer = model.tokenizer
+        transformer = model[0].auto_model
+        transformer.to(device)
+    else:  # transformers
+        tokenizer = tokenizers[model_key]
+        transformer = models[model_key]
+
+    # Tokenize with offset mapping to track character positions
+    encoding = tokenizer(
+        text,
+        return_tensors='pt',
+        return_offsets_mapping=True,
+        truncation=True,
+        max_length=512
+    )
+
+    offset_mapping = encoding.pop('offset_mapping')[0]  # Shape: (num_tokens, 2)
+    inputs = {k: v.to(device) for k, v in encoding.items()}
+
+    # Get hidden states
+    with torch.no_grad():
+        outputs = transformer(**inputs)
+        hidden_states = outputs.last_hidden_state[0]  # Shape: (num_tokens, hidden_dim)
+
+    results = []
+    for span in spans:
+        begin, end = span['begin'], span['end']
+        span_text = text[begin:end]
+
+        # Find tokens that overlap with this span
+        token_indices = []
+        token_texts = []
+
+        for idx, (token_start, token_end) in enumerate(offset_mapping.tolist()):
+            # Skip special tokens (they have offset (0, 0))
+            if token_start == 0 and token_end == 0 and idx > 0:
+                continue
+            # Check if token overlaps with span
+            if token_end > begin and token_start < end:
+                token_indices.append(idx)
+                token_texts.append(tokenizer.decode(encoding['input_ids'][0][idx]))
+
+        if token_indices:
+            # Average embeddings of tokens in this span
+            span_embeddings = hidden_states[token_indices]
+            avg_embedding = span_embeddings.mean(dim=0).cpu().numpy().tolist()
+        else:
+            # No tokens found for this span (shouldn't happen with valid input)
+            avg_embedding = [0.0] * hidden_states.shape[1]
+
+        results.append({
+            'begin': begin,
+            'end': end,
+            'span_text': span_text,
+            'embedding': avg_embedding,
+            'tokens': token_texts
+        })
+
+    return results
 
 def calculate_similarity_and_distance(embedding1: List[float], embedding2: List[float], metric: str = "cosine"):
     """Calculate similarity and distance between two embeddings"""
@@ -922,6 +1042,158 @@ async def document_similarity_recursive(request: DocumentSimilarityRecursiveRequ
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing recursive document similarity: {str(e)}")
 
+@app.post("/api/span-embeddings", response_model=SpanEmbeddingsResponse)
+async def span_embeddings(request: SpanEmbeddingsRequest):
+    """Get contextualized embeddings for specific spans within a text"""
+    validate_model(request.model)
+
+    # Validate text
+    if not request.text or not request.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="text cannot be empty or whitespace only"
+        )
+
+    # Validate spans
+    if not request.spans:
+        raise HTTPException(
+            status_code=400,
+            detail="spans list cannot be empty"
+        )
+
+    text_len = len(request.text)
+    for i, span in enumerate(request.spans):
+        if span.begin < 0 or span.end < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Span {i}: begin and end must be non-negative"
+            )
+        if span.begin >= span.end:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Span {i}: begin ({span.begin}) must be less than end ({span.end})"
+            )
+        if span.end > text_len:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Span {i}: end ({span.end}) exceeds text length ({text_len})"
+            )
+
+    start_time = time.time()
+
+    try:
+        spans_dict = [{'begin': s.begin, 'end': s.end} for s in request.spans]
+        results = get_span_embeddings(request.text, spans_dict, request.model)
+
+        processing_time = time.time() - start_time
+        logger.info(f"📍 [{request.model}] Embedded {len(request.spans)} spans in {processing_time:.3f}s")
+
+        return SpanEmbeddingsResponse(
+            text=request.text,
+            spans=[SpanEmbeddingResult(**r) for r in results],
+            model=request.model
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error computing span embeddings: {str(e)}")
+
+@app.post("/api/span-similarity", response_model=SpanSimilarityResponse)
+async def span_similarity(request: SpanSimilarityRequest):
+    """Compare contextualized span embeddings against a query text"""
+    validate_model(request.model)
+
+    # Validate text
+    if not request.text or not request.text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="text cannot be empty or whitespace only"
+        )
+
+    # Validate query
+    if not request.query or not request.query.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="query cannot be empty or whitespace only"
+        )
+
+    # Validate spans
+    if not request.spans:
+        raise HTTPException(
+            status_code=400,
+            detail="spans list cannot be empty"
+        )
+
+    # Validate metric
+    valid_metrics = ["cosine", "euclidean", "manhattan", "chebyshev"]
+    if request.metric not in valid_metrics:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid metric '{request.metric}'. Valid options: {valid_metrics}"
+        )
+
+    text_len = len(request.text)
+    for i, span in enumerate(request.spans):
+        if span.begin < 0 or span.end < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Span {i}: begin and end must be non-negative"
+            )
+        if span.begin >= span.end:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Span {i}: begin ({span.begin}) must be less than end ({span.end})"
+            )
+        if span.end > text_len:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Span {i}: end ({span.end}) exceeds text length ({text_len})"
+            )
+
+    start_time = time.time()
+
+    try:
+        # Get contextualized embeddings for spans
+        spans_dict = [{'begin': s.begin, 'end': s.end} for s in request.spans]
+        span_results = get_span_embeddings(request.text, spans_dict, request.model)
+
+        # Get embedding for the query text
+        config = MODEL_CONFIGS[request.model]
+        if config["type"] == "sentence_transformers":
+            query_embedding = get_embedding_sentence_transformers(request.query, request.model)
+        else:
+            query_embedding = get_embedding_transformers(request.query, request.model)
+
+        # Calculate similarity for each span
+        results = []
+        for span_result in span_results:
+            similarity, distance = calculate_similarity_and_distance(
+                span_result['embedding'],
+                query_embedding,
+                request.metric
+            )
+            results.append(SpanSimilarityResult(
+                begin=span_result['begin'],
+                end=span_result['end'],
+                span_text=span_result['span_text'],
+                similarity=similarity,
+                distance=distance,
+                tokens=span_result['tokens']
+            ))
+
+        processing_time = time.time() - start_time
+        logger.info(f"📍🔍 [{request.model}] Compared {len(request.spans)} spans against query in {processing_time:.3f}s")
+
+        return SpanSimilarityResponse(
+            text=request.text,
+            query=request.query,
+            spans=results,
+            model=request.model,
+            metric=request.metric
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error computing span similarity: {str(e)}")
+
 @app.get("/api/models", response_model=ModelListResponse)
 async def list_models():
     """List available models"""
@@ -964,11 +1236,13 @@ async def root():
     return {
         "message": "Multi-Model Embedding Server",
         "version": "1.3.0",
-        "features": ["Batch embeddings", "Multiple similarity metrics"],
+        "features": ["Batch embeddings", "Contextualized span embeddings", "Multiple similarity metrics"],
         "available_models": list(MODEL_CONFIGS.keys()),
         "endpoints": {
             "embeddings": "/api/embeddings",
             "batch_embed": "/api/embed",
+            "span_embeddings": "/api/span-embeddings",
+            "span_similarity": "/api/span-similarity",
             "similarity": "/api/similarity",
             "batch_similarity": "/api/similarity/batch",
             "document_similarity": "/api/document-similarity",

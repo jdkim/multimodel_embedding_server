@@ -12,6 +12,7 @@ from multimodel_embedding_server import (
     chunk_document_with_sliding_window_tokens,
     count_tokens_approximation,
     chunk_document_recursive,
+    get_span_embeddings,
     validate_model,
     MODEL_CONFIGS,
     models,
@@ -197,6 +198,296 @@ class TestDocumentChunking:
 
         # Should split into multiple chunks
         assert len(chunks) >= 2
+
+
+# ============================================================================
+# Span Embeddings Tests
+# ============================================================================
+
+class TestSpanEmbeddings:
+    """Tests for span embeddings functionality"""
+
+    @patch('multimodel_embedding_server.models')
+    def test_span_embeddings_endpoint_empty_text(self, mock_models, test_client):
+        """Test span embeddings with empty text"""
+        mock_models.__contains__.return_value = True
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "",
+                "spans": [{"begin": 0, "end": 5}],
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+
+    @patch('multimodel_embedding_server.models')
+    def test_span_embeddings_endpoint_empty_spans(self, mock_models, test_client):
+        """Test span embeddings with empty spans list"""
+        mock_models.__contains__.return_value = True
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "some text",
+                "spans": [],
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+
+    @patch('multimodel_embedding_server.models')
+    def test_span_embeddings_endpoint_negative_begin(self, mock_models, test_client):
+        """Test span embeddings with negative begin offset"""
+        mock_models.__contains__.return_value = True
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "some text",
+                "spans": [{"begin": -1, "end": 5}],
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 400
+        assert "non-negative" in response.json()["detail"]
+
+    @patch('multimodel_embedding_server.models')
+    def test_span_embeddings_endpoint_begin_gte_end(self, mock_models, test_client):
+        """Test span embeddings with begin >= end"""
+        mock_models.__contains__.return_value = True
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "some text",
+                "spans": [{"begin": 5, "end": 5}],
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 400
+        assert "less than" in response.json()["detail"]
+
+    @patch('multimodel_embedding_server.models')
+    def test_span_embeddings_endpoint_end_exceeds_text_length(self, mock_models, test_client):
+        """Test span embeddings with end exceeding text length"""
+        mock_models.__contains__.return_value = True
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "short",
+                "spans": [{"begin": 0, "end": 100}],
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 400
+        assert "exceeds text length" in response.json()["detail"]
+
+    def test_span_embeddings_endpoint_invalid_model(self, test_client):
+        """Test span embeddings with invalid model"""
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "some text",
+                "spans": [{"begin": 0, "end": 4}],
+                "model": "nonexistent_model"
+            }
+        )
+        assert response.status_code == 400
+
+    @patch('multimodel_embedding_server.models')
+    @patch('multimodel_embedding_server.get_span_embeddings')
+    def test_span_embeddings_endpoint_success(self, mock_get_span, mock_models, test_client):
+        """Test successful span embeddings endpoint call"""
+        mock_models.__contains__.return_value = True
+        mock_get_span.return_value = [
+            {
+                'begin': 23,
+                'end': 33,
+                'span_text': 'galectin-3',
+                'embedding': [0.1] * 768,
+                'tokens': ['gal', '##ect', '##in', '-', '3']
+            }
+        ]
+
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "NMR-based insight into galectin-3 binding",
+                "spans": [{"begin": 23, "end": 33}],
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "text" in data
+        assert "spans" in data
+        assert "model" in data
+        assert len(data["spans"]) == 1
+        assert data["spans"][0]["span_text"] == "galectin-3"
+        assert data["spans"][0]["begin"] == 23
+        assert data["spans"][0]["end"] == 33
+        assert "embedding" in data["spans"][0]
+        assert "tokens" in data["spans"][0]
+
+    @patch('multimodel_embedding_server.models')
+    @patch('multimodel_embedding_server.get_span_embeddings')
+    def test_span_embeddings_multiple_spans(self, mock_get_span, mock_models, test_client):
+        """Test span embeddings with multiple spans"""
+        mock_models.__contains__.return_value = True
+        mock_get_span.return_value = [
+            {
+                'begin': 0,
+                'end': 3,
+                'span_text': 'NMR',
+                'embedding': [0.1] * 768,
+                'tokens': ['NMR']
+            },
+            {
+                'begin': 23,
+                'end': 33,
+                'span_text': 'galectin-3',
+                'embedding': [0.2] * 768,
+                'tokens': ['gal', '##ect', '##in', '-', '3']
+            }
+        ]
+
+        response = test_client.post(
+            "/api/span-embeddings",
+            json={
+                "text": "NMR-based insight into galectin-3 binding",
+                "spans": [
+                    {"begin": 0, "end": 3},
+                    {"begin": 23, "end": 33}
+                ],
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["spans"]) == 2
+        assert data["spans"][0]["span_text"] == "NMR"
+        assert data["spans"][1]["span_text"] == "galectin-3"
+
+
+# ============================================================================
+# Span Similarity Tests
+# ============================================================================
+
+class TestSpanSimilarity:
+    """Tests for span similarity functionality"""
+
+    @patch('multimodel_embedding_server.models')
+    def test_span_similarity_empty_query(self, mock_models, test_client):
+        """Test span similarity with empty query"""
+        mock_models.__contains__.return_value = True
+        response = test_client.post(
+            "/api/span-similarity",
+            json={
+                "text": "some text",
+                "spans": [{"begin": 0, "end": 4}],
+                "query": "",
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 400
+        assert "query" in response.json()["detail"].lower()
+
+    @patch('multimodel_embedding_server.models')
+    def test_span_similarity_invalid_metric(self, mock_models, test_client):
+        """Test span similarity with invalid metric"""
+        mock_models.__contains__.return_value = True
+        response = test_client.post(
+            "/api/span-similarity",
+            json={
+                "text": "some text",
+                "spans": [{"begin": 0, "end": 4}],
+                "query": "test query",
+                "model": "pubmedbert",
+                "metric": "invalid_metric"
+            }
+        )
+        assert response.status_code == 400
+        assert "metric" in response.json()["detail"].lower()
+
+    @patch('multimodel_embedding_server.models')
+    @patch('multimodel_embedding_server.get_span_embeddings')
+    @patch('multimodel_embedding_server.get_embedding_sentence_transformers')
+    def test_span_similarity_success(self, mock_get_query_emb, mock_get_span, mock_models, test_client):
+        """Test successful span similarity call"""
+        mock_models.__contains__.return_value = True
+        mock_get_span.return_value = [
+            {
+                'begin': 23,
+                'end': 33,
+                'span_text': 'galectin-3',
+                'embedding': [1.0] + [0.0] * 767,
+                'tokens': ['galectin', '-', '3']
+            }
+        ]
+        mock_get_query_emb.return_value = [1.0] + [0.0] * 767  # Same embedding = similarity 1.0
+
+        response = test_client.post(
+            "/api/span-similarity",
+            json={
+                "text": "NMR-based insight into galectin-3 binding",
+                "spans": [{"begin": 23, "end": 33}],
+                "query": "galectin-3",
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "text" in data
+        assert "query" in data
+        assert "spans" in data
+        assert "metric" in data
+        assert len(data["spans"]) == 1
+        assert data["spans"][0]["span_text"] == "galectin-3"
+        assert "similarity" in data["spans"][0]
+        assert "distance" in data["spans"][0]
+        assert data["spans"][0]["similarity"] > 0.99  # Should be ~1.0
+
+    @patch('multimodel_embedding_server.models')
+    @patch('multimodel_embedding_server.get_span_embeddings')
+    @patch('multimodel_embedding_server.get_embedding_sentence_transformers')
+    def test_span_similarity_multiple_spans(self, mock_get_query_emb, mock_get_span, mock_models, test_client):
+        """Test span similarity with multiple spans"""
+        mock_models.__contains__.return_value = True
+        mock_get_span.return_value = [
+            {
+                'begin': 0,
+                'end': 3,
+                'span_text': 'NMR',
+                'embedding': [0.0, 1.0] + [0.0] * 766,
+                'tokens': ['NMR']
+            },
+            {
+                'begin': 23,
+                'end': 33,
+                'span_text': 'galectin-3',
+                'embedding': [1.0, 0.0] + [0.0] * 766,
+                'tokens': ['galectin', '-', '3']
+            }
+        ]
+        mock_get_query_emb.return_value = [1.0, 0.0] + [0.0] * 766
+
+        response = test_client.post(
+            "/api/span-similarity",
+            json={
+                "text": "NMR-based insight into galectin-3 binding",
+                "spans": [
+                    {"begin": 0, "end": 3},
+                    {"begin": 23, "end": 33}
+                ],
+                "query": "galectin-3",
+                "model": "pubmedbert"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["spans"]) == 2
+        # galectin-3 should have higher similarity
+        assert data["spans"][1]["similarity"] > data["spans"][0]["similarity"]
 
 
 # ============================================================================
