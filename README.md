@@ -6,6 +6,8 @@ A web embedding server that provides text embeddings with similarity calculation
 
 - **Multiple Models**: PubMedBERT, SapBERT, BioLORD, and BiomedBERT for biomedical text analysis
 - **Ollama-Compatible API**: Drop-in replacement for Ollama embedding endpoints
+- **Contextualized Span Embeddings**: Get embeddings for specific text spans within their context (PubAnnotation-compatible)
+- **Span Similarity**: Compare entity mentions against query terms with contextualized embeddings
 - **Document Similarity**: Advanced document chunking and similarity search capabilities
 - **Similarity Calculations**: Built-in cosine, euclidean, manhattan, and chebyshev distance metrics
 - **High Performance**: FastAPI with async support and concurrent request handling
@@ -176,6 +178,94 @@ Get embeddings for multiple texts
   ]
 }
 ```
+
+### Span Embedding Endpoints
+
+#### `POST /api/span-embeddings`
+Get contextualized embeddings for specific spans within a text. Embeddings are computed from the full text context, with subword tokens averaged into whole-word embeddings. Uses PubAnnotation-compatible `begin`/`end` offsets.
+
+**Request:**
+```json
+{
+  "text": "NMR-based insight into galectin-3 binding to CD146",
+  "spans": [
+    {"begin": 23, "end": 33},
+    {"begin": 45, "end": 50}
+  ],
+  "model": "pubmedbert"
+}
+```
+
+**Response:**
+```json
+{
+  "text": "NMR-based insight into galectin-3 binding to CD146",
+  "spans": [
+    {
+      "begin": 23,
+      "end": 33,
+      "span_text": "galectin-3",
+      "embedding": [0.1, 0.2, ...],
+      "tokens": ["galectin", "-", "3"]
+    },
+    {
+      "begin": 45,
+      "end": 50,
+      "span_text": "CD146",
+      "embedding": [0.3, 0.4, ...],
+      "tokens": ["cd14", "##6"]
+    }
+  ],
+  "model": "pubmedbert"
+}
+```
+
+#### `POST /api/span-similarity`
+Compare contextualized span embeddings against a query text and return similarity scores. Useful for entity linking and semantic matching.
+
+**Request:**
+```json
+{
+  "text": "NMR-based insight into galectin-3 binding to CD146",
+  "spans": [
+    {"begin": 23, "end": 33},
+    {"begin": 45, "end": 50}
+  ],
+  "query": "carbohydrate-binding protein",
+  "model": "pubmedbert",
+  "metric": "cosine"
+}
+```
+
+**Response:**
+```json
+{
+  "text": "NMR-based insight into galectin-3 binding to CD146",
+  "query": "carbohydrate-binding protein",
+  "spans": [
+    {
+      "begin": 23,
+      "end": 33,
+      "span_text": "galectin-3",
+      "similarity": 0.436,
+      "distance": 0.564,
+      "tokens": ["galectin", "-", "3"]
+    },
+    {
+      "begin": 45,
+      "end": 50,
+      "span_text": "CD146",
+      "similarity": 0.332,
+      "distance": 0.668,
+      "tokens": ["cd14", "##6"]
+    }
+  ],
+  "model": "pubmedbert",
+  "metric": "cosine"
+}
+```
+
+### Similarity Endpoints
 
 #### `POST /api/similarity`
 Calculate similarity between two texts
@@ -403,6 +493,66 @@ def analyze_clinical_similarity():
                 print(f"High similarity ({similarity:.3f}): {clinical_terms[i]} ↔ {clinical_terms[j]}")
 
 analyze_clinical_similarity()
+```
+
+### Entity Linking with Span Similarity
+
+```python
+import requests
+
+def find_matching_entities(text, spans, candidate_terms):
+    """
+    Find which candidate term best matches each entity span in context.
+    Useful for entity linking and normalization.
+    """
+    results = []
+
+    for candidate in candidate_terms:
+        response = requests.post(
+            "http://localhost:11435/api/span-similarity",
+            json={
+                "text": text,
+                "spans": spans,
+                "query": candidate,
+                "model": "pubmedbert",
+                "metric": "cosine"
+            }
+        )
+
+        for span_result in response.json()["spans"]:
+            results.append({
+                "span_text": span_result["span_text"],
+                "candidate": candidate,
+                "similarity": span_result["similarity"]
+            })
+
+    # Group by span and find best match
+    from collections import defaultdict
+    span_matches = defaultdict(list)
+    for r in results:
+        span_matches[r["span_text"]].append((r["candidate"], r["similarity"]))
+
+    for span_text, matches in span_matches.items():
+        best = max(matches, key=lambda x: x[1])
+        print(f"{span_text} -> {best[0]} (similarity: {best[1]:.3f})")
+
+# Example: Link biomedical entities to canonical terms
+text = "The study found that galectin-3 binds to CD146 on endothelial cells."
+spans = [
+    {"begin": 21, "end": 31},  # galectin-3
+    {"begin": 41, "end": 46}   # CD146
+]
+candidates = [
+    "carbohydrate-binding protein",
+    "cell adhesion molecule",
+    "membrane receptor",
+    "lectin"
+]
+
+find_matching_entities(text, spans, candidates)
+# Output:
+# galectin-3 -> carbohydrate-binding protein (similarity: 0.436)
+# CD146 -> cell adhesion molecule (similarity: 0.594)
 ```
 
 ### Document Similarity Analysis
